@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MoneyMate — Offline</title>
+<style>
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+    font-family:-apple-system,BlinkMacSystemFont,'Inter',sans-serif;background:#F8F9FA;color:#111;text-align:center;padding:24px;box-sizing:border-box;}
+  .card{max-width:360px;}
+  h1{font-size:20px;margin:16px 0 8px;color:#146C4C;}
+  p{color:#555;line-height:1.5;font-size:14px;}
+  button{margin-top:16px;padding:12px 20px;border:none;border-radius:10px;background:#146C4C;color:#fff;font-size:15px;font-weight:600;}
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>You're offline</h1>
+    <p>MoneyMate couldn't reach the network, but your data is safe on this device.
+    Reconnect and reopen the app to sync fonts and updates.</p>
+    <button onclick="location.reload()">Try again</button>
+  </div>
+</body>
+</html>
