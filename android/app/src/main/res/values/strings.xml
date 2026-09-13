@@ -1,0 +1,4 @@
+<!-- MoneyMate resource: String resources such as the application name. -->
+<resources>
+    <string name="app_name">MoneyMate</string>
+</resources>

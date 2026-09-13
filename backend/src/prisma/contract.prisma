@@ -1,0 +1,152 @@
+// MoneyMate database schema. Models and relations below define the persistent backend data structure.
+
+// use prisma-next
+
+model User {
+  id                  Int      @id @default(autoincrement())
+  email               String   @unique
+  passwordHash        String
+  name                String?
+  username            String?  @unique
+  profileImageUrl     String?
+  currency            String   @default("USD")
+  language            String   @default("en")
+  createdAt           TimestamptzString @default(now())
+  updatedAt           temporal.updatedAtString()
+
+  accounts            Account[]
+  categories          Category[]
+  transactions        Transaction[]
+  budgets             Budget[]
+  savingsGoals        SavingsGoal[]
+  bills               Bill[]
+  passwordResetTokens PasswordResetToken[]
+  notifications       Notification[]
+}
+
+
+model Account {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  name         String
+  type         String
+  balance      Decimal
+  currency     String   @default("USD")
+  createdAt    TimestamptzString @default(now())
+  updatedAt    temporal.updatedAtString()
+
+  user         User     @relation(fields: [userId], references: [id])
+  transactions Transaction[]
+}
+
+
+model Category {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  name         String
+  type         String
+  icon         String?
+  createdAt    TimestamptzString @default(now())
+
+  user         User          @relation(fields: [userId], references: [id])
+  transactions Transaction[]
+  budgets      Budget[]
+}
+
+
+model Transaction {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  accountId     Int
+  categoryId    Int?
+  type          String
+  amount        Decimal
+  merchant      String?
+  paymentMethod String?
+  notes         String?
+  receiptUrl    String?
+  occurredAt    TimestamptzString
+  createdAt     TimestamptzString @default(now())
+  updatedAt     temporal.updatedAtString()
+
+  user          User      @relation(fields: [userId], references: [id])
+  account       Account   @relation(fields: [accountId], references: [id])
+  category      Category? @relation(fields: [categoryId], references: [id])
+}
+
+
+model Budget {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  categoryId  Int
+  amount      Decimal
+  month       Int
+  year        Int
+  createdAt   TimestamptzString @default(now())
+  updatedAt   temporal.updatedAtString()
+
+  user        User     @relation(fields: [userId], references: [id])
+  category    Category @relation(fields: [categoryId], references: [id])
+}
+
+
+model SavingsGoal {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  name         String
+  targetAmount Decimal
+  savedAmount  Decimal  @default("0")
+  targetDate   TimestamptzString?
+  createdAt    TimestamptzString @default(now())
+  updatedAt    temporal.updatedAtString()
+
+  user         User     @relation(fields: [userId], references: [id])
+}
+
+
+model Bill {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  name        String
+  amount      Decimal
+  dueDate     TimestamptzString
+  status      String   @default("upcoming")
+  createdAt   TimestamptzString @default(now())
+  updatedAt   temporal.updatedAtString()
+
+  user        User     @relation(fields: [userId], references: [id])
+}
+
+
+// ============================================================
+// Password Reset Token
+// ============================================================
+model PasswordResetToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  tokenHash String   @unique
+  expiresAt TimestamptzString
+  usedAt    TimestamptzString?
+  createdAt TimestamptzString @default(now())
+
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+
+// ============================================================
+// Notification
+// ============================================================
+model Notification {
+  id                Int      @id @default(autoincrement())
+  userId            Int
+  type              String
+  title             String
+  message           String
+  isRead            Boolean  @default(false)
+  relatedEntityType String?
+  relatedEntityId   Int?
+  readAt            TimestamptzString?
+  createdAt         TimestamptzString @default(now())
+
+  user              User     @relation(fields: [userId], references: [id])
+}

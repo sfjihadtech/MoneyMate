@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+    MoneyMate data extraction configuration.
+
+    This file controls Android 12+ cloud backup
+    and device-to-device transfer behavior.
+
+    Specific include/exclude rules can be added later
+    if certain app files should be backed up or skipped.
+-->
+
+<data-extraction-rules>
+
+    <!-- Cloud backup rules -->
+    <cloud-backup>
+
+        <!--
+            Example:
+
+            <include
+                domain="sharedpref"
+                path="." />
+
+            <exclude
+                domain="sharedpref"
+                path="device.xml" />
+        -->
+
+    </cloud-backup>
+
+    <!-- Device-to-device transfer rules -->
+    <device-transfer>
+
+        <!--
+            Add include/exclude rules here later
+            if device transfer needs custom control.
+        -->
+
+    </device-transfer>
+
+</data-extraction-rules>

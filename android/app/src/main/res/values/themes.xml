@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MoneyMate resource: Base Android window/theme configuration used before Compose renders. -->
+<resources>
+
+    <style name="Theme.MoneyMate" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

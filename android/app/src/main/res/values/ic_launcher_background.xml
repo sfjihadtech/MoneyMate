@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MoneyMate resource: Vector/background resource used by the launcher icon. -->
+<resources>
+    <color name="ic_launcher_background">#197140</color>
+</resources>

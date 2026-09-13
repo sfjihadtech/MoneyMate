@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MoneyMate resource: Declares app permissions, MainActivity, deep link handling, and launcher aliases. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.MoneyMate"
+        android:usesCleartextTraffic="false">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.MoneyMate"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="moneymate" android:host="reset-password" />
+            </intent-filter>
+        </activity>
+
+        <activity-alias android:name=".LauncherClassic" android:enabled="true" android:exported="true" android:icon="@drawable/icon_classic_white" android:roundIcon="@drawable/icon_classic_white" android:label="@string/app_name" android:targetActivity=".MainActivity">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".LauncherMidnight" android:enabled="false" android:exported="true" android:icon="@drawable/icon_midnight" android:roundIcon="@drawable/icon_midnight" android:label="@string/app_name" android:targetActivity=".MainActivity">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".LauncherGold" android:enabled="false" android:exported="true" android:icon="@drawable/icon_gold_premium" android:roundIcon="@drawable/icon_gold_premium" android:label="@string/app_name" android:targetActivity=".MainActivity">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".LauncherForest" android:enabled="false" android:exported="true" android:icon="@drawable/icon_forest" android:roundIcon="@drawable/icon_forest" android:label="@string/app_name" android:targetActivity=".MainActivity">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".LauncherOcean" android:enabled="false" android:exported="true" android:icon="@drawable/icon_ocean" android:roundIcon="@drawable/icon_ocean" android:label="@string/app_name" android:targetActivity=".MainActivity">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".LauncherSunset" android:enabled="false" android:exported="true" android:icon="@drawable/icon_sunset" android:roundIcon="@drawable/icon_sunset" android:label="@string/app_name" android:targetActivity=".MainActivity">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".LauncherRoyal" android:enabled="false" android:exported="true" android:icon="@drawable/icon_royal" android:roundIcon="@drawable/icon_royal" android:label="@string/app_name" android:targetActivity=".MainActivity">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".LauncherRose" android:enabled="false" android:exported="true" android:icon="@drawable/icon_rose" android:roundIcon="@drawable/icon_rose" android:label="@string/app_name" android:targetActivity=".MainActivity">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity-alias>
+    </application>
+</manifest>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+    MoneyMate backup configuration.
+
+    This file controls which app data may be included in Android's
+    automatic backup system on supported Android versions.
+
+    You can add <include> or <exclude> rules later if specific files,
+    preferences, databases, or app data should be allowed or blocked
+    from backup.
+-->
+
+<full-backup-content>
+
+    <!--
+        Example:
+
+        <include
+            domain="sharedpref"
+            path="." />
+
+        <exclude
+            domain="sharedpref"
+            path="device.xml" />
+    -->
+
+</full-backup-content>
