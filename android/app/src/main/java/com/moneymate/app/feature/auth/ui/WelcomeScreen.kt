@@ -1,5 +1,7 @@
 package com.moneymate.app.feature.auth.ui
 
+import com.moneymate.app.core.localization.tr
+
 // =============================================================================
 // File: WelcomeScreen.kt
 // Purpose: Welcome screen shown before authentication. Uses a clean solid brand background with no blue radial glow.
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -21,6 +24,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import com.moneymate.app.data.repository.MoneyMateRepository
 import com.moneymate.app.R
 import com.moneymate.app.ui.theme.LocalMoneyMateTokens
 
@@ -35,6 +40,10 @@ fun WelcomeScreen(
     onCreateAccount: () -> Unit
 ) {
     val c = LocalMoneyMateTokens.current
+    val context = LocalContext.current
+    // Wake a sleeping free-tier backend while the user is still on Welcome,
+    // reducing the perceived delay on Register / Sign In.
+    LaunchedEffect(Unit) { MoneyMateRepository(context.applicationContext).warmUpServer() }
     Box(
         Modifier
             .fillMaxSize()
@@ -90,7 +99,7 @@ fun WelcomeScreen(
                     modifier = Modifier.fillMaxWidth().height(54.dp),
                     shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = c.brand)
-                ) { Text("Sign In", fontWeight = FontWeight.Bold) }
+                ) { Text(tr("Sign In"), fontWeight = FontWeight.Bold) }
 
                 OutlinedButton(
                     onClick = onCreateAccount,
@@ -98,7 +107,7 @@ fun WelcomeScreen(
                     shape = RoundedCornerShape(16.dp),
                     border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.White.copy(alpha = .42f)),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
-                ) { Text("Create Account", fontWeight = FontWeight.Bold) }
+                ) { Text(tr("Create Account"), fontWeight = FontWeight.Bold) }
 
             }
         }

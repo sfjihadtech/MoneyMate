@@ -1,5 +1,7 @@
 package com.moneymate.app.feature.main.ui
 
+import com.moneymate.app.core.localization.tr
+
 // =============================================================================
 // File: MainAppScreen.kt
 // Purpose: Authenticated application shell, navigation tabs, floating action behavior, and main screen routing.
@@ -10,10 +12,12 @@ package com.moneymate.app.feature.main.ui
 import android.app.Activity
 import android.app.KeyguardManager
 import android.content.Context
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -26,7 +30,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -34,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.moneymate.app.R
 import com.moneymate.app.feature.main.MainTab
 import com.moneymate.app.feature.main.MoneyMateState
 import com.moneymate.app.feature.main.ToolPage
@@ -52,7 +59,6 @@ fun MoneyMateMainApp(
 ) {
     val context = LocalContext.current
     val c = LocalMoneyMateTokens.current
-    val snackbar = remember { SnackbarHostState() }
     val state = remember(guestMode) { MoneyMateState(context.applicationContext, guestMode) }
     var tab by remember { mutableStateOf(MainTab.HOME) }
     var toolPage by remember { mutableStateOf(ToolPage.NONE) }
@@ -84,8 +90,8 @@ fun MoneyMateMainApp(
     }
 
     LaunchedEffect(Unit) { state.loadAll(true) }
-    LaunchedEffect(state.error) { state.error?.let { snackbar.showSnackbar(it); state.error = null } }
-    LaunchedEffect(state.message) { state.message?.let { snackbar.showSnackbar(it); state.message = null } }
+    LaunchedEffect(state.error) { state.error?.let { Toast.makeText(context, it, Toast.LENGTH_SHORT).show(); state.error = null } }
+    LaunchedEffect(state.message) { state.message?.let { Toast.makeText(context, it, Toast.LENGTH_SHORT).show(); state.message = null } }
     LaunchedEffect(state.lockRequested) {
         if (state.lockRequested) { locked = true; state.lockRequested = false }
     }
@@ -102,7 +108,7 @@ fun MoneyMateMainApp(
 
     Scaffold(
         containerColor = c.background,
-        snackbarHost = { SnackbarHost(snackbar) },
+
         bottomBar = {
             if (toolPage == ToolPage.NONE) {
                 HtmlBottomNavigation(
@@ -133,7 +139,8 @@ fun MoneyMateMainApp(
                         state = state,
                         onOpenTool = openTool,
                         onAdd = { showAdd = true },
-                        onViewActivity = { tab = MainTab.ACTIVITY }
+                        onViewActivity = { tab = MainTab.ACTIVITY },
+                        onProfile = { tab = MainTab.PROFILE }
                     )
                     MainTab.ACTIVITY -> TransactionsTab(state, { showAdd = true }, { editTx = it }, activityFilter, { current -> filterInitialType = current; showFilter = true })
                     MainTab.ANALYTICS -> AnalyticsTab(state) { openTool(it) }
@@ -205,15 +212,14 @@ private fun HtmlBottomNavigation(
         Surface(
             modifier = Modifier.fillMaxWidth().height(70.dp).align(Alignment.BottomCenter),
             color = c.surface,
-            border = BorderStroke(1.dp, c.divider),
             shadowElevation = 8.dp
         ) {
             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                HtmlNavItem(Icons.Filled.Home, if(state.language=="bn")"হোম" else "Home", selected == MainTab.HOME, Modifier.weight(1f)) { onSelect(MainTab.HOME) }
-                HtmlNavItem(Icons.Filled.History, if(state.language=="bn")"অ্যাক্টিভিটি" else "Activity", selected == MainTab.ACTIVITY, Modifier.weight(1f)) { onSelect(MainTab.ACTIVITY) }
+                HtmlNavItem(R.drawable.nav_home, if(state.language=="bn")"হোম" else "Home", selected == MainTab.HOME, Modifier.weight(1f)) { onSelect(MainTab.HOME) }
+                HtmlNavItem(R.drawable.nav_activity, if(state.language=="bn")"অ্যাক্টিভিটি" else "Activity", selected == MainTab.ACTIVITY, Modifier.weight(1f)) { onSelect(MainTab.ACTIVITY) }
                 Spacer(Modifier.weight(1f))
-                HtmlNavItem(Icons.Filled.Analytics, if(state.language=="bn")"ইনসাইটস" else "Insights", selected == MainTab.ANALYTICS, Modifier.weight(1f)) { onSelect(MainTab.ANALYTICS) }
-                HtmlNavItem(Icons.Filled.Person, if(state.language=="bn")"প্রোফাইল" else "Profile", selected == MainTab.PROFILE, Modifier.weight(1f)) { onSelect(MainTab.PROFILE) }
+                HtmlNavItem(R.drawable.nav_insights, if(state.language=="bn")"ইনসাইটস" else "Insights", selected == MainTab.ANALYTICS, Modifier.weight(1f)) { onSelect(MainTab.ANALYTICS) }
+                HtmlNavItem(R.drawable.nav_profile, if(state.language=="bn")"প্রোফাইল" else "Profile", selected == MainTab.PROFILE, Modifier.weight(1f)) { onSelect(MainTab.PROFILE) }
             }
         }
 
@@ -228,7 +234,7 @@ private fun HtmlBottomNavigation(
                 Modifier.background(Brush.linearGradient(listOf(c.action, c.brand))),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Filled.Add, "Add transaction", tint = Color.White, modifier = Modifier.size(29.dp))
+                Image(painter = painterResource(R.drawable.nav_fab), contentDescription = "Add transaction", colorFilter = ColorFilter.tint(Color.White), modifier = Modifier.size(29.dp))
             }
         }
     }
@@ -241,21 +247,27 @@ private fun HtmlBottomNavigation(
 // -----------------------------------------------------------------------------
 @Composable
 private fun HtmlNavItem(
-    icon: ImageVector,
+    iconRes: Int,
     label: String,
     selected: Boolean,
     modifier: Modifier,
     onClick: () -> Unit
 ) {
     val c = LocalMoneyMateTokens.current
+    val tint = if (selected) c.action else c.mutedText
     Column(
         modifier.clickable(onClick = onClick).padding(top = 8.dp, bottom = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(icon, label, tint = if (selected) c.action else c.mutedText, modifier = Modifier.size(23.dp))
+        Image(
+            painter = painterResource(iconRes),
+            contentDescription = label,
+            colorFilter = ColorFilter.tint(tint),
+            modifier = Modifier.size(23.dp)
+        )
         Spacer(Modifier.height(3.dp))
-        Text(label, color = if (selected) c.action else c.mutedText, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = tint, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -290,40 +302,35 @@ private fun LockOverlay(
                 Icon(Icons.Filled.Lock, null, tint = c.action, modifier = Modifier.size(34.dp))
             }
             Spacer(Modifier.height(18.dp))
-            Text("MoneyMate Locked", color = c.primaryText, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
-            Text("Enter your PIN to continue", color = c.secondaryText, fontSize = 13.sp)
+            Text(tr("MoneyMate Locked"), color = c.primaryText, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+            Text(tr("Enter your PIN to continue"), color = c.secondaryText, fontSize = 13.sp)
             Spacer(Modifier.height(20.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 repeat(6) { index -> Box(Modifier.size(14.dp).background(if (index < pin.length) c.action else c.border, CircleShape)) }
             }
-            if (pinError) Text("Incorrect PIN", color = c.error, modifier = Modifier.padding(top = 8.dp), fontSize = 12.sp)
+            if (pinError) Text(tr("Incorrect PIN"), color = c.error, modifier = Modifier.padding(top = 8.dp), fontSize = 12.sp)
             Spacer(Modifier.height(26.dp))
-            listOf(listOf("1","2","3"), listOf("4","5","6"), listOf("7","8","9"), listOf("","0","⌫")).forEach { row ->
+            listOf(listOf("1","2","3"), listOf("4","5","6"), listOf("7","8","9"), listOf("BIO","0","⌫")).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.padding(vertical = 7.dp)) {
                     row.forEach { key ->
-                        if (key.isBlank()) Spacer(Modifier.size(64.dp))
-                        else Surface(
-                            modifier = Modifier.size(64.dp),
-                            shape = CircleShape,
-                            color = c.surface,
+                        if (key == "BIO") {
+                            if (state.prefs.biometricEnabled && activity != null) {
+                                Surface(
+                                    modifier = Modifier.size(64.dp), shape = CircleShape, color = c.surface,
+                                    border = BorderStroke(1.dp, c.divider),
+                                    onClick = {
+                                        val km = context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+                                        val intent = km.createConfirmDeviceCredentialIntent("Unlock MoneyMate", "")
+                                        if (intent != null) launcher.launch(intent)
+                                    }
+                                ) { Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Fingerprint, null, tint = c.action, modifier = Modifier.size(28.dp)) } }
+                            } else Spacer(Modifier.size(64.dp))
+                        } else Surface(
+                            modifier = Modifier.size(64.dp), shape = CircleShape, color = c.surface,
                             border = BorderStroke(1.dp, c.divider),
                             onClick = { if (key == "⌫") onBackspace() else onDigit(key) }
-                        ) {
-                            Box(contentAlignment = Alignment.Center) { Text(key, color = c.primaryText, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }
-                        }
+                        ) { Box(contentAlignment = Alignment.Center) { Text(key, color = c.primaryText, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) } }
                     }
-                }
-            }
-            if (state.prefs.biometricEnabled && activity != null) {
-                Spacer(Modifier.height(12.dp))
-                TextButton(onClick = {
-                    val km = context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
-                    val intent = km.createConfirmDeviceCredentialIntent("Unlock MoneyMate", "Use your device authentication")
-                    if (intent != null) launcher.launch(intent)
-                }) {
-                    Icon(Icons.Filled.Fingerprint, null, tint = c.action)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Use device authentication", color = c.action)
                 }
             }
         }

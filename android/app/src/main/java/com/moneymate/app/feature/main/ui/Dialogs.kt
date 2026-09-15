@@ -1,5 +1,7 @@
 package com.moneymate.app.feature.main.ui
 
+import com.moneymate.app.core.localization.tr
+
 // =============================================================================
 // File: Dialogs.kt
 // Purpose: Bottom sheets and dialogs for transactions, accounts, budgets, goals, bills, transfers, and related actions.
@@ -152,7 +154,7 @@ fun AddTransactionDialog(
     var amount by remember { mutableStateOf(initial?.amount ?: "") }
     var merchant by remember { mutableStateOf(initial?.merchant ?: "") }
     var notes by remember { mutableStateOf(initial?.notes ?: "") }
-    var payment by remember { mutableStateOf(initial?.paymentMethod ?: "Card") }
+    var payment by remember { mutableStateOf(initial?.paymentMethod ?: "") }
     var date by remember { mutableStateOf(initial?.occurredAt?.take(10) ?: LocalDate.now().toString()) }
     var time by remember { mutableStateOf("12:00") }
     var receiptAttached by remember { mutableStateOf(false) }
@@ -178,7 +180,7 @@ fun AddTransactionDialog(
             Surface(modifier=Modifier.fillMaxWidth(), shape=RoundedCornerShape(16.dp), color=c.background) {
                 Row(Modifier.padding(horizontal=16.dp, vertical=11.dp), verticalAlignment=Alignment.CenterVertically) {
                     Text(currencySymbol(state.currency), color=c.mutedText, fontSize=25.sp, fontWeight=FontWeight.ExtraBold)
-                    TextField(amount,{ amount=it.filter{ch->ch.isDigit()||ch=='.'} }, modifier=Modifier.weight(1f), placeholder={Text("0.00",color=c.mutedText,fontSize=28.sp,fontWeight=FontWeight.Bold)}, singleLine=true, keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Decimal), textStyle=LocalTextStyle.current.copy(fontSize=28.sp,fontWeight=FontWeight.Bold,color=c.primaryText), colors=TextFieldDefaults.colors(focusedContainerColor=Color.Transparent,unfocusedContainerColor=Color.Transparent,focusedIndicatorColor=Color.Transparent,unfocusedIndicatorColor=Color.Transparent))
+                    TextField(amount,{ amount=it.filter{ch->ch.isDigit()||ch=='.'} }, modifier=Modifier.weight(1f), placeholder={Text(tr("0.00"),color=c.mutedText,fontSize=28.sp,fontWeight=FontWeight.Bold)}, singleLine=true, keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Decimal), textStyle=LocalTextStyle.current.copy(fontSize=28.sp,fontWeight=FontWeight.Bold,color=c.primaryText), colors=TextFieldDefaults.colors(focusedContainerColor=Color.Transparent,unfocusedContainerColor=Color.Transparent,focusedIndicatorColor=Color.Transparent,unfocusedIndicatorColor=Color.Transparent))
                 }
             }
             Spacer(Modifier.height(16.dp)); MmLabel(mmText(state,"Category","ক্যাটাগরি")); Spacer(Modifier.height(8.dp))
@@ -198,10 +200,14 @@ fun AddTransactionDialog(
             MmInput(if(type=="income")mmText(state,"Source","উৎস") else mmText(state,"Merchant","মার্চেন্ট"),merchant,{merchant=it},if(type=="income")"e.g. Acme Corp, Client Name" else "e.g. Whole Foods Market")
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)){Box(Modifier.weight(1f)){MmInput(mmText(state,"Date","তারিখ"),date,{date=it},"YYYY-MM-DD")};Box(Modifier.weight(1f)){MmInput(mmText(state,"Time","সময়"),time,{time=it},"12:00")}}
-            Spacer(Modifier.height(14.dp)); MmLabel(mmText(state,"Payment method","পেমেন্ট পদ্ধতি")); Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){listOf("Card","Cash","Bank Transfer","Wallet").forEach{pm->HtmlChip(pm,payment==pm,onClick={payment=pm})}}
-            Spacer(Modifier.height(14.dp)); MmLabel(mmText(state,"Account","অ্যাকাউন্ট")); Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){state.accounts.forEach{acc->HtmlChip(acc.name,account?.id==acc.id,onClick={account=acc})}}
+            Spacer(Modifier.height(14.dp)); MmLabel(mmText(state,"Payment account","পেমেন্ট অ্যাকাউন্ট")); Spacer(Modifier.height(8.dp))
+            if (state.accounts.isEmpty()) {
+                Text(mmText(state,"Add an account first.","প্রথমে একটি অ্যাকাউন্ট যোগ করুন।"), color=c.error, fontSize=12.sp)
+            } else {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){
+                    state.accounts.forEach{acc->HtmlChip(acc.name,account?.id==acc.id,onClick={account=acc;payment=acc.name})}
+                }
+            }
             Spacer(Modifier.height(14.dp)); MmInput(mmText(state,"Notes","নোট"),notes,{notes=it},mmText(state,"Add a note (optional)","নোট লিখুন (ঐচ্ছিক)"),3)
             Spacer(Modifier.height(14.dp)); MmLabel(mmText(state,"Receipt","রসিদ")); Spacer(Modifier.height(8.dp))
             OutlinedButton(onClick={receiptAttached=!receiptAttached},modifier=Modifier.fillMaxWidth().height(52.dp),shape=RoundedCornerShape(14.dp),border=androidx.compose.foundation.BorderStroke(1.dp,c.border)){Icon(Icons.Filled.PhotoCamera,null,modifier=Modifier.size(18.dp));Spacer(Modifier.width(8.dp));Text(if(receiptAttached)mmText(state,"Receipt photo attached","রসিদের ছবি যুক্ত হয়েছে") else mmText(state,"Attach receipt photo","রসিদের ছবি যুক্ত করুন"),fontWeight=FontWeight.Bold)}
@@ -209,7 +215,7 @@ fun AddTransactionDialog(
             Spacer(Modifier.height(16.dp))
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)){
                 Button(onClick=onDismiss,modifier=Modifier.weight(1f).height(54.dp),shape=RoundedCornerShape(14.dp),colors=ButtonDefaults.buttonColors(containerColor=c.background,contentColor=c.primaryText)){Text(mmText(state,"Cancel","বাতিল"),fontWeight=FontWeight.Bold)}
-                Button(onClick={val v=amount.toDoubleOrNull();val a=account;if(v==null||v<=0||a==null){localError=mmText(state,"Enter a valid amount and account.","সঠিক পরিমাণ ও অ্যাকাউন্ট নির্বাচন করুন।");return@Button};saving=true;scope.launch{val req=TransactionRequest(a.id,category?.id,type,v,merchant.ifBlank{null},payment,notes.ifBlank{null},occurredAt=dateToIso(date)?:java.time.Instant.now().toString());val ok=if(initial==null)state.createTransaction(req) else state.updateTransaction(initial.id,req);saving=false;if(ok)onDismiss() else localError=state.error}},enabled=!saving,modifier=Modifier.weight(2f).height(54.dp),shape=RoundedCornerShape(14.dp),colors=ButtonDefaults.buttonColors(containerColor=c.action,contentColor=Color.White)){if(saving)CircularProgressIndicator(Modifier.size(19.dp),strokeWidth=2.dp,color=Color.White) else Text(mmText(state,"Save Transaction","লেনদেন সংরক্ষণ"),fontWeight=FontWeight.ExtraBold)}
+                Button(onClick={val v=amount.toDoubleOrNull();val a=account;if(v==null||v<=0||a==null){localError=mmText(state,"Enter a valid amount and account.","সঠিক পরিমাণ ও অ্যাকাউন্ট নির্বাচন করুন।");return@Button};saving=true;scope.launch{val req=TransactionRequest(a.id,category?.id,type,v,merchant.ifBlank{null},a.name,notes.ifBlank{null},occurredAt=dateToIso(date)?:java.time.Instant.now().toString());val ok=if(initial==null)state.createTransaction(req) else state.updateTransaction(initial.id,req);saving=false;if(ok)onDismiss() else localError=state.error}},enabled=!saving,modifier=Modifier.weight(2f).height(54.dp),shape=RoundedCornerShape(14.dp),colors=ButtonDefaults.buttonColors(containerColor=c.action,contentColor=Color.White)){if(saving)CircularProgressIndicator(Modifier.size(19.dp),strokeWidth=2.dp,color=Color.White) else Text(mmText(state,"Save Transaction","লেনদেন সংরক্ষণ"),fontWeight=FontWeight.ExtraBold)}
             }
         }
     }
@@ -260,14 +266,14 @@ fun TransferDialog(state: MoneyMateState, onDismiss: () -> Unit) {
     HtmlSheet("Transfer Money", onDismiss) {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Column {
-                Text("From account", color = c.secondaryText, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text(tr("From account"), color = c.secondaryText, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     state.accounts.forEach { acc -> HtmlChip(acc.name, from?.id == acc.id, { from = acc }) }
                 }
             }
             Column {
-                Text("To account", color = c.secondaryText, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text(tr("To account"), color = c.secondaryText, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     state.accounts.forEach { acc -> HtmlChip(acc.name, to?.id == acc.id, { to = acc }) }
@@ -277,7 +283,7 @@ fun TransferDialog(state: MoneyMateState, onDismiss: () -> Unit) {
                 value = amount,
                 onValueChange = { amount = it },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("0.00") },
+                placeholder = { Text(tr("0.00")) },
                 prefix = { Text(currencySymbol(state.currency), fontSize = 24.sp, fontWeight = FontWeight.ExtraBold) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 singleLine = true,
@@ -515,11 +521,11 @@ fun CurrencySheet(state: MoneyMateState, onDismiss: () -> Unit) {
         "EUR" to "Euro", "GBP" to "British Pound", "SGD" to "Singapore Dollar", "INR" to "Indian Rupee"
     )
     HtmlSheet("Currency Manager", onDismiss) {
-        Text("Select your preferred currency", color = c.secondaryText, fontSize = 12.5.sp)
+        Text(tr("Select your preferred currency"), color = c.secondaryText, fontSize = 12.5.sp)
         Row(Modifier.padding(top = 4.dp, bottom = 12.dp), verticalAlignment = Alignment.Top) {
             Icon(Icons.Filled.Info, null, tint = c.mutedText, modifier = Modifier.size(14.dp))
             Spacer(Modifier.width(5.dp))
-            Text("Display only — amounts are not automatically converted between currencies.", color = c.mutedText, fontSize = 11.5.sp)
+            Text(tr("Display only — amounts are not automatically converted between currencies."), color = c.mutedText, fontSize = 11.5.sp)
         }
         currencies.forEach { (code, name) ->
             Row(
@@ -574,7 +580,7 @@ fun PlansSheet(state: MoneyMateState, onDismiss: () -> Unit) {
                         Column(horizontalAlignment=Alignment.End){Text(plan.price,color=c.primaryText,fontWeight=FontWeight.ExtraBold,fontSize=15.5.sp);Text(plan.period,color=c.mutedText,fontSize=10.5.sp)}
                     }
                 }
-                if(plan.best) Surface(shape=RoundedCornerShape(7.dp),color=c.warning,modifier=Modifier.offset(x=16.dp,y=(-7).dp)){Text("BEST VALUE",color=c.brand,fontSize=9.sp,fontWeight=FontWeight.ExtraBold,modifier=Modifier.padding(horizontal=9.dp,vertical=3.dp))}
+                if(plan.best) Surface(shape=RoundedCornerShape(7.dp),color=c.warning,modifier=Modifier.offset(x=16.dp,y=(-7).dp)){Text(tr("BEST VALUE"),color=c.brand,fontSize=9.sp,fontWeight=FontWeight.ExtraBold,modifier=Modifier.padding(horizontal=9.dp,vertical=3.dp))}
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -599,12 +605,12 @@ fun FilterSheet(
     var range by remember { mutableStateOf("all") }
     var sort by remember { mutableStateOf("date-desc") }
     HtmlSheet("Filter & Sort", onDismiss) {
-        Text("Type", color = c.primaryText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        Text(tr("Type"), color = c.primaryText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             listOf("all", "income", "expense").forEach { value -> HtmlChip(value.replaceFirstChar(Char::uppercase), type == value, onClick = { type = value }) }
         }
         Spacer(Modifier.height(18.dp))
-        Text("Date Range", color = c.primaryText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        Text(tr("Date Range"), color = c.primaryText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             listOf("all" to "All Time", "today" to "Today", "week" to "This Week").forEach { (value, label) -> HtmlChip(label, range == value, onClick = { range = value }) }
         }
@@ -612,7 +618,7 @@ fun FilterSheet(
             listOf("month" to "This Month", "custom" to "Custom Range").forEach { (value, label) -> HtmlChip(label, range == value, onClick = { range = value }) }
         }
         Spacer(Modifier.height(18.dp))
-        Text("Sort by", color = c.primaryText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        Text(tr("Sort by"), color = c.primaryText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 HtmlChip("Newest first", sort == "date-desc", onClick = { sort = "date-desc" })

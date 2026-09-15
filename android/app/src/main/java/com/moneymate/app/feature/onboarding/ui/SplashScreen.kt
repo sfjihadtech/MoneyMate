@@ -1,5 +1,7 @@
 package com.moneymate.app.feature.onboarding.ui
 
+import com.moneymate.app.core.localization.tr
+
 // =============================================================================
 // File: SplashScreen.kt
 // Purpose: Startup splash screen displayed while initial app state is prepared.
@@ -33,4 +35,4 @@ import kotlinx.coroutines.delay
 // Purpose: Renders the Splash Screen user interface and handles its local interactions.
 // -----------------------------------------------------------------------------
 @Composable
-fun SplashScreen(onFinished:()->Unit){val c=LocalMoneyMateTokens.current;val alpha=remember{Animatable(0f)};LaunchedEffect(Unit){alpha.animateTo(1f,tween(500));delay(900);onFinished()};Box(Modifier.fillMaxSize().background(c.brand),contentAlignment=Alignment.Center){Column(horizontalAlignment=Alignment.CenterHorizontally,modifier=Modifier.alpha(alpha.value)){Box(Modifier.size(116.dp).background(Color.White.copy(alpha=.12f),RoundedCornerShape(34.dp)),contentAlignment=Alignment.Center){Image(painterResource(R.drawable.moneymate_logo),"MoneyMate",Modifier.size(88.dp))};Spacer(Modifier.height(22.dp));Text("MoneyMate",color=Color.White,fontSize=30.sp,fontWeight=FontWeight.Bold);Text("Track Smarter. Spend Better. Grow Wealth.",color=Color.White.copy(alpha=.78f),fontSize=12.sp)}}}
+fun SplashScreen(onFinished:()->Unit){val c=LocalMoneyMateTokens.current;val alpha=remember{Animatable(0f)};LaunchedEffect(Unit){alpha.animateTo(1f,tween(500));delay(900);onFinished()};Box(Modifier.fillMaxSize().background(c.brand),contentAlignment=Alignment.Center){Column(horizontalAlignment=Alignment.CenterHorizontally,modifier=Modifier.alpha(alpha.value)){Box(Modifier.size(116.dp).background(Color.White.copy(alpha=.12f),RoundedCornerShape(34.dp)),contentAlignment=Alignment.Center){Image(painterResource(R.drawable.moneymate_logo),"MoneyMate",Modifier.size(88.dp))};Spacer(Modifier.height(22.dp));Text(tr("MoneyMate"),color=Color.White,fontSize=30.sp,fontWeight=FontWeight.Bold);Text(tr("Track Smarter. Spend Better. Grow Wealth."),color=Color.White.copy(alpha=.78f),fontSize=12.sp)}}}

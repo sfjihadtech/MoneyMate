@@ -1,5 +1,7 @@
 package com.moneymate.app.feature.auth.ui
 
+import com.moneymate.app.core.localization.tr
+
 // =============================================================================
 // File: ResetPasswordScreen.kt
 // Purpose: Password-reset screen for setting and confirming a new password.
@@ -56,9 +58,9 @@ fun ResetPasswordScreen(token: String, onBack: () -> Unit, onSuccess: () -> Unit
         Column(Modifier.fillMaxWidth().padding(horizontal = 26.dp, vertical = 8.dp)) {
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { AuthIllustration(Icons.Filled.Lock) }
             Spacer(Modifier.height(20.dp))
-            Text("Reset Password", color = c.primaryText, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+            Text(tr("Reset Password"), color = c.primaryText, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
             Spacer(Modifier.height(6.dp))
-            Text("Choose a strong new password.", color = c.secondaryText, fontSize = 13.5.sp)
+            Text(tr("Choose a strong new password."), color = c.secondaryText, fontSize = 13.5.sp)
             Spacer(Modifier.height(26.dp))
             when (valid) {
                 null -> Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = c.action) }

@@ -321,6 +321,51 @@ app.use(
 );
 
 
+
+// ============================================================
+// Password Reset HTTPS Bridge
+// ============================================================
+// Gmail and other email clients may block custom URI schemes such as
+// moneymate:// directly inside email buttons.
+//
+// The email therefore opens this normal HTTPS endpoint first.
+// This endpoint then redirects Android to the MoneyMate deep link.
+// ============================================================
+
+app.get(
+    "/reset-password",
+    (req, res) => {
+        const token =
+            String(req.query.token || "").trim();
+
+        // ----------------------------------------------------
+        // Missing Token
+        // ----------------------------------------------------
+        if (!token) {
+            return res
+                .status(400)
+                .send(
+                    "Invalid or missing password reset token."
+                );
+        }
+
+        // ----------------------------------------------------
+        // Open MoneyMate App
+        // ----------------------------------------------------
+        const appDeepLink =
+            `moneymate://reset-password?token=${encodeURIComponent(
+                token
+            )}`;
+
+        return res.redirect(
+            302,
+            appDeepLink
+        );
+    }
+);
+
+
+
 // ============================================================
 // Health Check
 // ============================================================

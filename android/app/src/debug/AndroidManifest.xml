@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Debug only: required for local-network access on Android 17 / API 37 -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+
     <application
         android:usesCleartextTraffic="true"
         tools:replace="android:usesCleartextTraffic" />
+
 </manifest>

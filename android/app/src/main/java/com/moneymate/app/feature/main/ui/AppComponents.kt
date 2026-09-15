@@ -1,5 +1,7 @@
 package com.moneymate.app.feature.main.ui
 
+import com.moneymate.app.core.localization.tr
+
 // =============================================================================
 // File: AppComponents.kt
 // Purpose: Reusable MoneyMate UI building blocks used throughout the authenticated app.
@@ -348,10 +350,10 @@ fun PageTitle(
     actionText: String? = null,
     onAction: (() -> Unit)? = null
 ) {
-    HtmlTopBar(title, subtitle, onBack) {
+    HtmlTopBar(tr(title), subtitle?.let(::tr), onBack) {
         if (actionText != null && onAction != null) {
             TextButton(onClick = onAction) {
-                Text(actionText, color = LocalMoneyMateTokens.current.action, fontWeight = FontWeight.Bold)
+                Text(tr(actionText), color = LocalMoneyMateTokens.current.action, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -375,7 +377,7 @@ fun MMCard(
 // Purpose: Encapsulates the Section Label section of this file.
 // -----------------------------------------------------------------------------
 @Composable
-fun SectionLabel(text: String) = HtmlEyebrow(text, Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+fun SectionLabel(text: String) = HtmlEyebrow(tr(text), Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
 
 
 // -----------------------------------------------------------------------------
@@ -404,7 +406,7 @@ fun MenuRow(
         }
         Spacer(Modifier.width(13.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, color = if (destructive) c.error else c.primaryText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(tr(title), color = if (destructive) c.error else c.primaryText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             if (!subtitle.isNullOrBlank()) Text(subtitle, color = c.secondaryText, fontSize = 11.5.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         if (!badge.isNullOrBlank()) Text(badge, color = c.secondaryText, fontSize = 11.5.sp, modifier = Modifier.padding(end = 6.dp))
@@ -472,7 +474,7 @@ fun PrimaryButton(text: String, enabled: Boolean = true, onClick: () -> Unit) {
         modifier = Modifier.fillMaxWidth().height(52.dp),
         shape = RoundedCornerShape(16.dp),
         colors = ButtonDefaults.buttonColors(containerColor = c.action, contentColor = Color.White)
-    ) { Text(text, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
+    ) { Text(tr(text), fontWeight = FontWeight.Bold, fontSize = 15.sp) }
 }
 
 
@@ -488,11 +490,11 @@ fun EmptyState(title: String, description: String) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(Modifier.size(56.dp).background(c.lightAction, CircleShape), contentAlignment = Alignment.Center) {
-            Text("—", color = c.action, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            Text(tr("—"), color = c.action, fontSize = 26.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(12.dp))
-        Text(title, color = c.primaryText, fontWeight = FontWeight.Bold)
+        Text(tr(title), color = c.primaryText, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(5.dp))
-        Text(description, color = c.secondaryText, fontSize = 13.sp)
+        Text(tr(description), color = c.secondaryText, fontSize = 13.sp)
     }
 }

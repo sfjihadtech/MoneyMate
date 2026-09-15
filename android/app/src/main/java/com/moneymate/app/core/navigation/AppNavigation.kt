@@ -97,7 +97,11 @@ fun AppNavigation(onDarkModeChange: (Boolean) -> Unit) {
         composable(AppRoutes.FORGOT_PASSWORD) {
             ForgotPasswordScreen(
                 onBack = { navController.popBackStack() },
-                onResetTokenReady = { token -> navController.navigate("reset_password?token=$token") }
+                onResetTokenReady = { _ ->
+                    // Do not navigate automatically.
+                    // The Reset Password screen must open only when the user
+                    // taps the secure reset link received by email.
+                }
             )
         }
 

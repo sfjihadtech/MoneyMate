@@ -21,8 +21,16 @@ import retrofit2.Response
 import java.io.File
 
 sealed class RepoResult<out T> {
-    data class Success<T>(val data: T, val message: String = "") : RepoResult<T>()
-    data class Error(val message: String, val code: Int? = null) : RepoResult<Nothing>()
+    data class Success<T>(
+        val data: T,
+        val message: String = ""
+    ) : RepoResult<T>()
+
+    data class Error(
+        val message: String,
+        val code: Int? = null,
+        val errorCode: String? = null
+    ) : RepoResult<Nothing>()
 }
 
 
@@ -37,26 +45,75 @@ class MoneyMateRepository(context: Context) {
 
     fun hasSession() = tokenManager.hasToken()
     fun logout() = tokenManager.clearToken()
+    suspend fun warmUpServer() { runCatching { api.health() } }
     private fun auth(): String? = tokenManager.getAuthorizationHeader()
 
-    private suspend fun <T> call(block: suspend () -> Response<ApiResponse<T>>): RepoResult<T> {
+
+
+    private suspend fun <T> call(
+        block: suspend () -> Response<ApiResponse<T>>
+    ): RepoResult<T> {
         return try {
             val response = block()
+
             if (response.isSuccessful) {
                 val body = response.body()
-                if (body?.success == true && body.data != null) RepoResult.Success(body.data, body.message)
-                else if (body?.success == true) @Suppress("UNCHECKED_CAST") RepoResult.Success(Unit as T, body.message)
-                else RepoResult.Error(body?.message ?: "Request failed", response.code())
+
+                if (body?.success == true && body.data != null) {
+                    RepoResult.Success(
+                        body.data,
+                        body.message
+                    )
+                } else if (body?.success == true) {
+                    @Suppress("UNCHECKED_CAST")
+                    RepoResult.Success(
+                        Unit as T,
+                        body.message
+                    )
+                } else {
+                    RepoResult.Error(
+                        message = body?.message ?: "Request failed",
+                        code = response.code(),
+                        errorCode = body?.code
+                    )
+                }
             } else {
-                val raw = response.errorBody()?.string()
-                val parsed = runCatching { gson.fromJson(raw, ApiResponse::class.java) }.getOrNull()
-                if (response.code() == 401 || response.code() == 403) tokenManager.clearToken()
-                RepoResult.Error(parsed?.message ?: "Request failed (${response.code()})", response.code())
+                val raw =
+                    response.errorBody()?.string()
+
+                val parsed =
+                    runCatching {
+                        gson.fromJson(
+                            raw,
+                            ApiResponse::class.java
+                        )
+                    }.getOrNull()
+
+                if (
+                    response.code() == 401 ||
+                    response.code() == 403
+                ) {
+                    tokenManager.clearToken()
+                }
+
+                RepoResult.Error(
+                    message =
+                        parsed?.message
+                            ?: "Request failed (${response.code()})",
+                    code = response.code(),
+                    errorCode = parsed?.code
+                )
             }
         } catch (e: Exception) {
-            RepoResult.Error(e.message ?: "Unable to connect to the server")
+            RepoResult.Error(
+                message =
+                    e.message
+                        ?: "Unable to connect to the server"
+            )
         }
     }
+
+
 
     suspend fun login(email: String, password: String, rememberMe: Boolean): RepoResult<User> {
         return when (val result = call { api.login(LoginRequest(email.trim(), password)) }) {
@@ -66,7 +123,6 @@ class MoneyMateRepository(context: Context) {
                 if (token.isNullOrBlank() || user == null) RepoResult.Error("Invalid login response")
                 else {
                     tokenManager.saveToken(token, rememberMe)
-                    ensureStarterData(user.currency)
                     RepoResult.Success(user, result.message)
                 }
             }
@@ -82,7 +138,6 @@ class MoneyMateRepository(context: Context) {
                 if (token.isNullOrBlank() || user == null) RepoResult.Error("Invalid registration response")
                 else {
                     tokenManager.saveToken(token, true)
-                    ensureStarterData(user.currency)
                     RepoResult.Success(user, result.message)
                 }
             }

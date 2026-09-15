@@ -1,5 +1,7 @@
 package com.moneymate.app.feature.auth.ui
 
+import com.moneymate.app.core.localization.tr
+
 // =============================================================================
 // File: PasswordResetSuccessScreen.kt
 // Purpose: Confirmation screen shown after a successful password reset.
@@ -36,9 +38,9 @@ fun PasswordResetSuccessScreen(onBackToSignIn: () -> Unit) {
     ) {
         AuthIllustration(Icons.Filled.MarkEmailRead)
         Spacer(Modifier.height(22.dp))
-        Text("Password Reset Link Sent", color = c.primaryText, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
+        Text(tr("Password Reset Link Sent"), color = c.primaryText, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
         Spacer(Modifier.height(8.dp))
-        Text("Your password has been updated. You can now sign in with your new password.", color = c.secondaryText, fontSize = 13.5.sp, lineHeight = 21.sp, textAlign = TextAlign.Center)
+        Text(tr("Your password has been updated. You can now sign in with your new password."), color = c.secondaryText, fontSize = 13.5.sp, lineHeight = 21.sp, textAlign = TextAlign.Center)
         Spacer(Modifier.height(24.dp))
         AuthPrimaryButton("Back to Sign In", onClick = onBackToSignIn)
     }

@@ -1,5 +1,7 @@
 package com.moneymate.app.feature.auth.ui
 
+import com.moneymate.app.core.localization.tr
+
 // =============================================================================
 // File: SignInScreen.kt
 // Purpose: Sign-in screen that validates credentials and starts an authenticated session.
@@ -66,9 +68,9 @@ fun SignInScreen(
         ) {
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { AuthIllustration(Icons.Filled.LockOpen) }
             Spacer(Modifier.height(20.dp))
-            Text("Welcome back", color = c.primaryText, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+            Text(tr("Welcome back"), color = c.primaryText, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
             Spacer(Modifier.height(6.dp))
-            Text("Sign In", color = c.secondaryText, fontSize = 13.5.sp)
+            Text(tr("Sign In"), color = c.secondaryText, fontSize = 13.5.sp)
             Spacer(Modifier.height(26.dp))
 
             AuthField(
@@ -122,8 +124,8 @@ fun SignInScreen(
             }
             Spacer(Modifier.height(18.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                Text("Don't have an account? ", color = c.secondaryText, fontSize = 13.sp)
-                Text("Create Account", color = c.action, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onCreateAccount))
+                Text(tr("Don't have an account? "), color = c.secondaryText, fontSize = 13.sp)
+                Text(tr("Create Account"), color = c.action, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onCreateAccount))
             }
             Spacer(Modifier.height(40.dp))
         }

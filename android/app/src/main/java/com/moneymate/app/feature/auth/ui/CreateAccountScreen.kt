@@ -1,5 +1,7 @@
 package com.moneymate.app.feature.auth.ui
 
+import com.moneymate.app.core.localization.tr
+
 // =============================================================================
 // File: CreateAccountScreen.kt
 // Purpose: Create-account screen with validation and password-strength feedback.
@@ -56,13 +58,13 @@ fun CreateAccountScreen(
     Column(Modifier.fillMaxSize().background(c.background)) {
         Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 14.dp, vertical = 10.dp)) { AuthBackButton(onBack) }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 26.dp, vertical = 8.dp)) {
-            Text("Create Account", color = c.primaryText, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+            Text(tr("Create Account"), color = c.primaryText, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
             Spacer(Modifier.height(6.dp))
-            Text("The smart way to track spending, build budgets, and grow your savings — all in one place.", color = c.secondaryText, fontSize = 13.5.sp, lineHeight = 21.sp)
+            Text(tr("The smart way to track spending, build budgets, and grow your savings — all in one place."), color = c.secondaryText, fontSize = 13.5.sp, lineHeight = 21.sp)
             Spacer(Modifier.height(26.dp))
 
             AuthField(
-                "Full Name", name, { name = it; error = null }, "Alex Morgan", Icons.Filled.Person,
+                "Full Name", name, { name = it; error = null }, "Enter your full name", Icons.Filled.Person,
                 enabled = !loading, imeAction = ImeAction.Next
             )
             Spacer(Modifier.height(14.dp))
@@ -110,8 +112,8 @@ fun CreateAccountScreen(
             }
             Spacer(Modifier.height(18.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                Text("Already have an account? ", color = c.secondaryText, fontSize = 13.sp)
-                Text("Sign In", color = c.action, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onSignIn))
+                Text(tr("Already have an account? "), color = c.secondaryText, fontSize = 13.sp)
+                Text(tr("Sign In"), color = c.action, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onSignIn))
             }
             Spacer(Modifier.height(40.dp))
         }

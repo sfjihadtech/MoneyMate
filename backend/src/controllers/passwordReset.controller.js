@@ -61,19 +61,18 @@ function hashResetToken(token) {
 // -----------------------------------------------------------------------------
 async function forgotPassword(req, res) {
     try {
-        // Validate request body
+        // ====================================================
+        // Validate Request
+        // ====================================================
         const validation =
-            forgotPasswordSchema.safeParse(
-                req.body
-            );
+            forgotPasswordSchema.safeParse(req.body);
 
         if (!validation.success) {
             return res.status(400).json({
                 success: false,
-                message: "Validation failed",
-                errors: validation.error.issues.map(
-                    (issue) => issue.message
-                ),
+                code: "INVALID_REQUEST",
+                message:
+                    "Unable to send reset link. Please check your email address and try again.",
             });
         }
 
@@ -90,19 +89,23 @@ async function forgotPassword(req, res) {
 
         // ====================================================
         // Security:
-        // Never reveal whether email exists
+        // Never reveal whether the email is registered
         // ====================================================
         if (!user) {
             return res.status(200).json({
                 success: true,
+                code: "RESET_LINK_SENT",
                 message:
-                    "If an account exists with this email, a password reset link has been sent.",
+                    "We've sent a password reset link to your email. Please check your Mail inbox and spam folder.",
+                data: {
+                    cooldownSeconds: 90,
+                },
             });
         }
 
 
         // ====================================================
-        // Invalidate Previous Reset Tokens
+        // Load Previous Reset Requests
         // ====================================================
         const existingTokens =
             await db.orm.public.PasswordResetToken
@@ -111,24 +114,92 @@ async function forgotPassword(req, res) {
                 })
                 .all();
 
-        const now =
-            new Date().toISOString();
 
-        for (const token of existingTokens) {
-            if (!token.usedAt) {
-                await db.orm.public.PasswordResetToken
-                    .where({
-                        id: token.id,
-                    })
-                    .update({
-                        usedAt: now,
-                    });
-            }
+        const nowMs = Date.now();
+
+        const twelveHoursAgoMs =
+            nowMs - (12 * 60 * 60 * 1000);
+
+        const ninetySecondsAgoMs =
+            nowMs - (90 * 1000);
+
+
+        // ====================================================
+        // Requests Made During Last 12 Hours
+        // Maximum = 3
+        // ====================================================
+        const requestsInLast12Hours =
+            existingTokens.filter((token) => {
+                const createdAtMs =
+                    new Date(token.createdAt).getTime();
+
+                return (
+                    Number.isFinite(createdAtMs) &&
+                    createdAtMs >= twelveHoursAgoMs
+                );
+            });
+
+
+        if (requestsInLast12Hours.length >= 3) {
+            return res.status(429).json({
+                success: false,
+                code: "RESET_LIMIT_REACHED",
+                message:
+                    "You've reached the maximum number of reset requests. Please try again later.",
+            });
         }
 
 
         // ====================================================
-        // Generate New Secure Token
+        // 90-Second Cooldown
+        // ====================================================
+        const latestRequest =
+            requestsInLast12Hours
+                .filter((token) => {
+                    const createdAtMs =
+                        new Date(token.createdAt).getTime();
+
+                    return (
+                        Number.isFinite(createdAtMs) &&
+                        createdAtMs >= ninetySecondsAgoMs
+                    );
+                })
+                .sort(
+                    (a, b) =>
+                        new Date(b.createdAt).getTime() -
+                        new Date(a.createdAt).getTime()
+                )[0];
+
+
+        if (latestRequest) {
+            const createdAtMs =
+                new Date(latestRequest.createdAt).getTime();
+
+            const elapsedSeconds =
+                Math.floor(
+                    (nowMs - createdAtMs) / 1000
+                );
+
+            const retryAfterSeconds =
+                Math.max(
+                    1,
+                    90 - elapsedSeconds
+                );
+
+            return res.status(429).json({
+                success: false,
+                code: "RESET_COOLDOWN",
+                message:
+                    "Please wait before requesting another reset link.",
+                data: {
+                    retryAfterSeconds,
+                },
+            });
+        }
+
+
+        // ====================================================
+        // Generate Secure Reset Token
         // ====================================================
         const rawToken =
             generateResetToken();
@@ -142,13 +213,12 @@ async function forgotPassword(req, res) {
         // ====================================================
         const expiresAt =
             new Date(
-                Date.now() +
-                15 * 60 * 1000
+                nowMs + (15 * 60 * 1000)
             ).toISOString();
 
 
         // ====================================================
-        // Save Hashed Token
+        // Save New Hashed Token
         // ====================================================
         const createdToken =
             await db.orm.public.PasswordResetToken.create({
@@ -159,7 +229,7 @@ async function forgotPassword(req, res) {
 
 
         // ====================================================
-        // Send Reset Email
+        // Send Password Reset Email
         // ====================================================
         try {
             await sendPasswordResetEmail({
@@ -173,7 +243,7 @@ async function forgotPassword(req, res) {
                 emailError
             );
 
-            // Invalidate token if email could not be sent
+            // Mark failed token as used
             await db.orm.public.PasswordResetToken
                 .where({
                     id: createdToken.id,
@@ -185,23 +255,43 @@ async function forgotPassword(req, res) {
 
             return res.status(500).json({
                 success: false,
+                code: "RESET_EMAIL_FAILED",
                 message:
-                    "Failed to send password reset email",
+                    "We couldn't send the reset link right now. Please try again shortly.",
             });
         }
 
 
         // ====================================================
-        // Response
+        // Invalidate Older Active Tokens
+        // Only the newest successfully emailed link remains valid
+        // ====================================================
+        for (const token of existingTokens) {
+            if (!token.usedAt) {
+                await db.orm.public.PasswordResetToken
+                    .where({
+                        id: token.id,
+                    })
+                    .update({
+                        usedAt:
+                            new Date().toISOString(),
+                    });
+            }
+        }
+
+
+        // ====================================================
+        // Successful Response
         // ====================================================
         const responseData = {
             expiresAt,
+            cooldownSeconds: 90,
         };
 
 
         // Development only:
-        // Also return resetToken for curl testing.
-        // Never returned in production.
+        // Return token for local testing.
+        // Never expose reset token in production.
         if (process.env.NODE_ENV !== "production") {
             responseData.resetToken =
                 rawToken;
@@ -210,10 +300,12 @@ async function forgotPassword(req, res) {
 
         return res.status(200).json({
             success: true,
+            code: "RESET_LINK_SENT",
             message:
-                "If an account exists with this email, a password reset link has been sent.",
+                "We've sent a password reset link to your email. Please check your Mail inbox and spam folder.",
             data: responseData,
         });
+
     } catch (error) {
         console.error(
             "Forgot password error:",
@@ -222,8 +314,9 @@ async function forgotPassword(req, res) {
 
         return res.status(500).json({
             success: false,
+            code: "RESET_REQUEST_FAILED",
             message:
-                "Failed to process password reset request",
+                "We couldn't send the reset link right now. Please try again shortly.",
         });
     }
 }

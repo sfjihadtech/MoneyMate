@@ -14,11 +14,14 @@ import androidx.compose.runtime.setValue
 import com.moneymate.app.data.local.AppPreferences
 import com.moneymate.app.data.local.RecurringTemplate
 import com.moneymate.app.core.common.CategoryCatalog
+import com.moneymate.app.core.localization.AppLanguageRuntime
 import com.moneymate.app.data.model.*
 import com.moneymate.app.data.repository.MoneyMateRepository
 import com.moneymate.app.data.repository.RepoResult
 import java.time.LocalDate
 import java.time.ZoneOffset
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 
 // -----------------------------------------------------------------------------
@@ -53,6 +56,8 @@ class MoneyMateState(context: Context, val guestMode: Boolean = false) {
         private set
     var currentLanguage by mutableStateOf(prefs.language)
         private set
+
+    init { AppLanguageRuntime.language = prefs.language }
     var selectedPremiumTheme by mutableStateOf(prefs.selectedPremiumTheme)
         private set
     var selectedAppIcon by mutableStateOf(prefs.selectedAppIcon)
@@ -72,25 +77,43 @@ class MoneyMateState(context: Context, val guestMode: Boolean = false) {
         if (showLoader) loading = true else refreshing = true
         error = null
         try {
+            // Recurring work is lightweight/local; network reads below run concurrently so
+            // sign-in is gated by the slowest request instead of the sum of ~12 requests.
             processRecurringTransactions()
-            user = (repository.profile() as? RepoResult.Success)?.data?.user ?: user
-            accounts = (repository.accounts() as? RepoResult.Success)?.data?.accounts ?: accounts
-            categories = (repository.categories() as? RepoResult.Success)?.data?.categories ?: categories
-            transactions = (repository.transactions() as? RepoResult.Success)?.data?.transactions ?: transactions
-            budgets = (repository.budgets() as? RepoResult.Success)?.data?.budgets ?: budgets
-            savingsGoals = (repository.savingsGoals() as? RepoResult.Success)?.data?.savingsGoals ?: savingsGoals
-            bills = (repository.bills() as? RepoResult.Success)?.data?.bills ?: bills
-            notifications = (repository.notifications() as? RepoResult.Success)?.data?.notifications ?: notifications
-            dashboard = (repository.dashboard() as? RepoResult.Success)?.data ?: dashboard
             val now = LocalDate.now()
-            monthly = (repository.monthly(now.monthValue, now.year) as? RepoResult.Success)?.data ?: monthly
-            categoryBreakdown = (repository.categoryBreakdown(now.monthValue, now.year) as? RepoResult.Success)?.data ?: categoryBreakdown
-            budgetProgress = (repository.budgetProgress(now.monthValue, now.year) as? RepoResult.Success)?.data ?: budgetProgress
+            coroutineScope {
+                val profileReq = async { repository.profile() }
+                val accountsReq = async { repository.accounts() }
+                val categoriesReq = async { repository.categories() }
+                val transactionsReq = async { repository.transactions() }
+                val budgetsReq = async { repository.budgets() }
+                val goalsReq = async { repository.savingsGoals() }
+                val billsReq = async { repository.bills() }
+                val notificationsReq = async { repository.notifications() }
+                val dashboardReq = async { repository.dashboard() }
+                val monthlyReq = async { repository.monthly(now.monthValue, now.year) }
+                val categoryReq = async { repository.categoryBreakdown(now.monthValue, now.year) }
+                val budgetProgressReq = async { repository.budgetProgress(now.monthValue, now.year) }
+
+                user = (profileReq.await() as? RepoResult.Success)?.data?.user ?: user
+                accounts = (accountsReq.await() as? RepoResult.Success)?.data?.accounts ?: accounts
+                categories = (categoriesReq.await() as? RepoResult.Success)?.data?.categories ?: categories
+                transactions = (transactionsReq.await() as? RepoResult.Success)?.data?.transactions ?: transactions
+                budgets = (budgetsReq.await() as? RepoResult.Success)?.data?.budgets ?: budgets
+                savingsGoals = (goalsReq.await() as? RepoResult.Success)?.data?.savingsGoals ?: savingsGoals
+                bills = (billsReq.await() as? RepoResult.Success)?.data?.bills ?: bills
+                notifications = (notificationsReq.await() as? RepoResult.Success)?.data?.notifications ?: notifications
+                dashboard = (dashboardReq.await() as? RepoResult.Success)?.data ?: dashboard
+                monthly = (monthlyReq.await() as? RepoResult.Success)?.data ?: monthly
+                categoryBreakdown = (categoryReq.await() as? RepoResult.Success)?.data ?: categoryBreakdown
+                budgetProgress = (budgetProgressReq.await() as? RepoResult.Success)?.data ?: budgetProgress
+            }
             user?.let {
                 currentCurrency = it.currency
                 currentLanguage = it.language
                 prefs.currency = it.currency
                 prefs.language = it.language
+                AppLanguageRuntime.language = it.language
             }
         } catch (e: Exception) {
             error = e.message ?: "Unable to refresh MoneyMate"
@@ -114,11 +137,12 @@ class MoneyMateState(context: Context, val guestMode: Boolean = false) {
         }
         currentLanguage = code
         prefs.language = code
+        AppLanguageRuntime.language = code
         return true
     }
 
     suspend fun setCurrency(code: String): Boolean {
-        if (code !in setOf("USD", "BDT", "MYR", "EUR", "GBP", "SGD", "INR")) return false
+        if (code !in setOf("USD", "BDT", "MYR", "EUR", "GBP", "SGD", "INR", "AUD", "CAD", "JPY", "CNY", "KRW", "AED", "SAR", "QAR", "KWD", "CHF", "NZD", "THB", "IDR", "PHP", "PKR", "NPR", "LKR", "TRY", "ZAR")) return false
         if (!guestMode) {
             val u = user ?: return false
             val result = repository.updateProfile(ProfileRequest(u.name ?: "MoneyMate User", u.username, code, u.language))
@@ -175,6 +199,18 @@ class MoneyMateState(context: Context, val guestMode: Boolean = false) {
     suspend fun deleteBill(id: Int): Boolean = mutate(repository.deleteBill(id))
 
     suspend fun updateProfile(body: ProfileRequest): Boolean = mutate(repository.updateProfile(body))
+
+    suspend fun uploadProfileImage(file: java.io.File): Boolean {
+        if (guestMode) { error = "Sign in to add a profile photo."; return false }
+        return when (val result = repository.uploadProfileImage(file)) {
+            is RepoResult.Success -> {
+                user = result.data.user ?: user
+                message = result.message.ifBlank { "Profile photo updated" }
+                true
+            }
+            is RepoResult.Error -> { error = result.message; false }
+        }
+    }
     suspend fun changePassword(current: String, next: String): Boolean = mutate(repository.changePassword(current, next), refresh = false)
     suspend fun deleteUserAccount(): Boolean {
         if (guestMode) {
@@ -291,6 +327,6 @@ enum class ToolPage {
     ADVANCED_ANALYTICS, AI_INSIGHTS, RECURRING, ADVANCED_FILTERS,
     APPEARANCE, LANGUAGE, CURRENCY, ACCESSIBILITY, PREMIUM_THEMES,
     PREMIUM_ICONS, SECURITY, BACKUP, RESTORE, EXPORT, IMPORT,
-    HELP, FAQ, CONTACT, PRIVACY, TERMS, LICENSES, ABOUT, EDIT_PROFILE,
+    FAQ, CONTACT, PRIVACY, TERMS, ABOUT, EDIT_PROFILE,
     PLANS, QUICK_PROFILE, ANALYTICS_FULL
 }

@@ -55,15 +55,15 @@ async function ensureStarterData(user) {
     // deleted starter accounts on every sign-in.
     const accounts = await db.orm.public.Account.where({ userId }).all();
     if (accounts.length === 0) {
-        for (const [name, type] of STARTER_ACCOUNTS) {
-            await db.orm.public.Account.create({
+        await Promise.all(STARTER_ACCOUNTS.map(([name, type]) =>
+            db.orm.public.Account.create({
                 userId,
                 name,
                 type,
                 balance: 0,
                 currency,
-            });
-        }
+            })
+        ));
     }
 
     // Categories are backfilled individually so older users receive the complete
@@ -73,12 +73,12 @@ async function ensureStarterData(user) {
         categories.map((item) => `${String(item.type).toLowerCase()}::${String(item.name).toLowerCase()}`)
     );
 
-    for (const [name, type, icon] of CATEGORY_TAXONOMY) {
-        const key = `${type.toLowerCase()}::${name.toLowerCase()}`;
-        if (existing.has(key)) continue;
-        await db.orm.public.Category.create({ userId, name, type, icon });
-        existing.add(key);
-    }
+    const missingCategories = CATEGORY_TAXONOMY.filter(([name, type]) =>
+        !existing.has(`${type.toLowerCase()}::${name.toLowerCase()}`)
+    );
+    await Promise.all(missingCategories.map(([name, type, icon]) =>
+        db.orm.public.Category.create({ userId, name, type, icon })
+    ));
 }
 
 module.exports = {

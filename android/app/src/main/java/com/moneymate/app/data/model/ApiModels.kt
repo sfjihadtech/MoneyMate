@@ -18,6 +18,7 @@ import com.google.gson.annotations.SerializedName
 data class ApiResponse<T>(
     val success: Boolean = false,
     val message: String = "",
+    val code: String? = null,
     val data: T? = null,
     val errors: List<ApiError>? = null
 )
@@ -66,7 +67,13 @@ data class UserData(val user: User? = null)
 // Section: ResetData
 // Purpose: Encapsulates the Reset Data section of this file.
 // -----------------------------------------------------------------------------
-data class ResetData(val resetToken: String? = null, val expiresAt: String? = null, val valid: Boolean? = null)
+data class ResetData(
+    val resetToken: String? = null,
+    val expiresAt: String? = null,
+    val valid: Boolean? = null,
+    val cooldownSeconds: Int? = null,
+    val retryAfterSeconds: Int? = null
+)
 
 
 // -----------------------------------------------------------------------------

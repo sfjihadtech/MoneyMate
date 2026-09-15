@@ -1,76 +1,166 @@
 // =============================================================================
 // File: email.service.js
-// Purpose: Business/service layer for email.service functionality.
-// Notes: Major executable sections are documented for easier maintenance.
+// Purpose: Handles MoneyMate transactional email delivery.
+// Notes:
+// - Uses one reusable pooled SMTP transporter.
+// - Reuses Gmail SMTP connections when possible.
+// - Keeps password-reset email design and content unchanged.
+// - SMTP credentials are read only from environment variables.
 // =============================================================================
 
 const nodemailer = require("nodemailer");
 
 
-// ============================================================
-// Create SMTP Transporter
-// ============================================================
+// =============================================================================
+// SMTP Transporter
+// =============================================================================
+
+// Keep one transporter instance for the lifetime of the backend process.
+// This avoids creating a new Gmail SMTP/TLS connection for every email.
+let transporterInstance = null;
+
 
 // -----------------------------------------------------------------------------
-// Section: createTransporter
-// Purpose: Handles the create Transporter part of this backend module.
+// Create / Reuse SMTP Transporter
 // -----------------------------------------------------------------------------
 function createTransporter() {
-    const smtpPort = Number(
-        process.env.SMTP_PORT || 587
-    );
 
-    return nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: smtpPort,
+    // Return the existing transporter when already initialized.
+    if (transporterInstance) {
+        return transporterInstance;
+    }
 
-        secure:
-            smtpPort === 465,
 
-        auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS,
-        },
-    });
+    const smtpPort =
+        Number(
+            process.env.SMTP_PORT || 587
+        );
+
+
+    const smtpUser =
+        String(
+            process.env.SMTP_USER || ""
+        ).trim();
+
+
+    // Google may display App Passwords with spaces.
+    // Nodemailer requires the raw password without spaces.
+    const smtpPass =
+        String(
+            process.env.SMTP_PASS || ""
+        ).replace(/\s+/g, "");
+
+
+    // -------------------------------------------------------------------------
+    // Validate SMTP Configuration
+    // -------------------------------------------------------------------------
+
+    if (
+        !process.env.SMTP_HOST ||
+        !smtpUser ||
+        !smtpPass
+    ) {
+        throw new Error(
+            "SMTP is not configured: SMTP_HOST, SMTP_USER and SMTP_PASS are required"
+        );
+    }
+
+
+    // -------------------------------------------------------------------------
+    // Create Reusable SMTP Pool
+    // -------------------------------------------------------------------------
+
+    transporterInstance =
+        nodemailer.createTransport({
+
+            host: process.env.SMTP_HOST,
+
+            port: smtpPort,
+
+            secure:
+                smtpPort === 465,
+
+            auth: {
+                user: smtpUser,
+                pass: smtpPass,
+            },
+
+
+            // -------------------------------------------------------------
+            // Connection Pool
+            // -------------------------------------------------------------
+            // Reuse an authenticated SMTP connection instead of opening
+            // a completely new Gmail connection for every reset email.
+
+            pool: true,
+
+            maxConnections: 2,
+
+            maxMessages: 50,
+
+
+            // -------------------------------------------------------------
+            // Timeouts
+            // -------------------------------------------------------------
+
+            connectionTimeout: 10000,
+
+            greetingTimeout: 10000,
+
+            socketTimeout: 15000,
+        });
+
+
+    return transporterInstance;
 }
 
 
-// ============================================================
+// =============================================================================
 // Send Password Reset Email
-// ============================================================
+// =============================================================================
 
-// -----------------------------------------------------------------------------
-// Section: sendPasswordResetEmail
-// Purpose: Handles the send Password Reset Email part of this backend module.
-// -----------------------------------------------------------------------------
 async function sendPasswordResetEmail({
     to,
     name,
     resetToken,
 }) {
+
     const transporter =
         createTransporter();
+
+
+    // -------------------------------------------------------------------------
+    // Reset URL
+    // -------------------------------------------------------------------------
 
     const resetBaseUrl =
         process.env.PASSWORD_RESET_URL ||
         "http://localhost:3000/reset-password";
+
 
     const resetUrl =
         `${resetBaseUrl}?token=${encodeURIComponent(
             resetToken
         )}`;
 
+
+    // -------------------------------------------------------------------------
+    // Sender / Recipient Display Information
+    // -------------------------------------------------------------------------
+
     const fromEmail =
         process.env.EMAIL_FROM ||
         process.env.SMTP_USER;
+
 
     const displayName =
         name || "MoneyMate User";
 
 
-    // ========================================================
+    // =========================================================================
     // Plain Text Email
-    // ========================================================
+    // =========================================================================
+
     const text = `
 Hi ${displayName},
 
@@ -88,9 +178,10 @@ MoneyMate
 `.trim();
 
 
-    // ========================================================
+    // =========================================================================
     // HTML Email
-    // ========================================================
+    // =========================================================================
+
     const html = `
 <!DOCTYPE html>
 <html>
@@ -210,18 +301,25 @@ MoneyMate
 `;
 
 
-    // ========================================================
+    // =========================================================================
     // Send Email
-    // ========================================================
+    // =========================================================================
+
     const info =
         await transporter.sendMail({
-            from: `"MoneyMate" <${fromEmail}>`,
+            from:
+                `"MoneyMate" <${fromEmail}>`,
+
             to,
+
             subject:
                 "Reset your MoneyMate password",
+
             text,
+
             html,
         });
+
 
     return {
         messageId: info.messageId,
@@ -229,27 +327,28 @@ MoneyMate
 }
 
 
-// ============================================================
+// =============================================================================
 // Verify SMTP Connection
-// ============================================================
+// =============================================================================
 
-// -----------------------------------------------------------------------------
-// Section: verifyEmailConnection
-// Purpose: Handles the verify Email Connection part of this backend module.
-// -----------------------------------------------------------------------------
 async function verifyEmailConnection() {
+
+    // Use the same reusable transporter.
     const transporter =
         createTransporter();
 
+
     await transporter.verify();
+
 
     return true;
 }
 
 
-// ============================================================
+// =============================================================================
 // Export Email Service
-// ============================================================
+// =============================================================================
+
 module.exports = {
     sendPasswordResetEmail,
     verifyEmailConnection,

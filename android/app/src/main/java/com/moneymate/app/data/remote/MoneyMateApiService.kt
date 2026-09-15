@@ -20,6 +20,7 @@ import retrofit2.http.*
 // Purpose: Formatting/helper logic for Money Mate Api Service.
 // -----------------------------------------------------------------------------
 interface MoneyMateApiService {
+    @GET("api/health") suspend fun health(): Response<ResponseBody>
     @POST("api/auth/register") suspend fun register(@Body body: RegisterRequest): Response<ApiResponse<AuthData>>
     @POST("api/auth/login") suspend fun login(@Body body: LoginRequest): Response<ApiResponse<AuthData>>
     @GET("api/auth/me") suspend fun me(@Header("Authorization") auth: String): Response<ApiResponse<UserData>>

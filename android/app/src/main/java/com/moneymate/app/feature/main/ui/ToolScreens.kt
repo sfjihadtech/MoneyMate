@@ -1,5 +1,7 @@
 package com.moneymate.app.feature.main.ui
 
+import com.moneymate.app.core.localization.tr
+
 // =============================================================================
 // File: ToolScreens.kt
 // Purpose: Secondary financial tools, settings, security, backup/export, premium, and utility screens.
@@ -8,6 +10,9 @@ package com.moneymate.app.feature.main.ui
 // =============================================================================
 
 import android.graphics.Paint
+import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import android.graphics.pdf.PdfDocument
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -16,6 +21,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -34,6 +40,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -51,11 +59,15 @@ import com.moneymate.app.feature.main.ToolPage
 import com.moneymate.app.ui.theme.LocalMoneyMateTokens
 import com.moneymate.app.ui.theme.PremiumThemes
 import com.moneymate.app.R
+import com.moneymate.app.BuildConfig
+import com.moneymate.app.billing.PlayBillingManager
+import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import java.io.File
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneOffset
+import kotlin.math.roundToInt
 
 
 // -----------------------------------------------------------------------------
@@ -97,12 +109,10 @@ fun ToolRouter(
         ToolPage.PLANS -> PlansScreen(state, onBack)
         ToolPage.QUICK_PROFILE -> QuickProfileScreen(state, onBack, onOpenProfileTab)
         ToolPage.ANALYTICS_FULL -> FinancialHealthScreen(state, onBack)
-        ToolPage.HELP -> HelpCenterScreen(onBack)
-        ToolPage.FAQ -> StaticInfoScreen("Frequently Asked Questions", faqText, onBack)
+        ToolPage.FAQ -> HelpCenterScreen(onBack)
         ToolPage.CONTACT -> ContactScreen(onBack)
         ToolPage.PRIVACY -> StaticInfoScreen("Privacy", privacyText, onBack)
         ToolPage.TERMS -> StaticInfoScreen("Terms of Service", termsText, onBack)
-        ToolPage.LICENSES -> StaticInfoScreen("Open Source Licenses", licensesText, onBack)
         ToolPage.ABOUT -> AboutScreen(onBack)
         else -> StaticInfoScreen("MoneyMate", "This feature is available from the main app.", onBack)
     }
@@ -123,6 +133,7 @@ private fun QuickProfileScreen(
     val c = LocalMoneyMateTokens.current
     val name = state.user?.name ?: if (state.guestMode) "Guest User" else "MoneyMate User"
     val initials = name.trim().split(" ").filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1).uppercase() }.ifBlank { "MM" }
+    val imageUrl = state.user?.profileImageUrl?.let { if (it.startsWith("http")) it else BuildConfig.API_BASE_URL.trimEnd('/') + it }
     Column(Modifier.fillMaxSize().background(c.background)) {
         PageTitle("Profile", onBack = onBack)
         Column(Modifier.padding(horizontal = 20.dp)) {
@@ -131,15 +142,16 @@ private fun QuickProfileScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
-                    Modifier.size(64.dp).background(c.action, RoundedCornerShape(20.dp)),
+                    Modifier.size(64.dp).clip(CircleShape).background(c.action),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(initials, color = androidx.compose.ui.graphics.Color.White, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                    if (!imageUrl.isNullOrBlank()) AsyncImage(model = imageUrl, contentDescription = "Profile photo", modifier = Modifier.fillMaxSize().clip(CircleShape))
+                    else Text(initials, color = androidx.compose.ui.graphics.Color.White, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
                 }
                 Spacer(Modifier.width(14.dp))
                 Column {
                     Text(name, color = c.primaryText, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp)
-                    Text("Member since Feb 2024", color = c.mutedText, fontSize = 12.5.sp, modifier = Modifier.padding(top = 2.dp))
+                    Text(tr("Member since Feb 2024"), color = c.mutedText, fontSize = 12.5.sp, modifier = Modifier.padding(top = 2.dp))
                 }
             }
             Spacer(Modifier.height(10.dp))
@@ -232,6 +244,8 @@ private fun AccountsScreen(state: MoneyMateState, onBack: () -> Unit) {
     val c = LocalMoneyMateTokens.current
     var add by remember { mutableStateOf(false) }
     var transfer by remember { mutableStateOf(false) }
+    var editTarget by remember { mutableStateOf<Account?>(null) }
+    var deleteTarget by remember { mutableStateOf<Account?>(null) }
 
     Column(Modifier.fillMaxSize().background(c.background)) {
         HtmlTopBar("Accounts", onBack = onBack) {
@@ -248,7 +262,7 @@ private fun AccountsScreen(state: MoneyMateState, onBack: () -> Unit) {
                     color = c.lightAction
                 ) {
                     Column(Modifier.padding(18.dp)) {
-                        Text("Net worth", color = c.secondaryText, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                        Text(tr("Net worth"), color = c.secondaryText, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.height(4.dp))
                         Text(
                             money(state.accounts.sumOf { it.balance.toDoubleOrNull() ?: 0.0 }, state.currency),
@@ -265,27 +279,12 @@ private fun AccountsScreen(state: MoneyMateState, onBack: () -> Unit) {
                 item { EmptyState("No accounts", "Create an account to start tracking money.") }
             } else {
                 items(state.accounts, key = { it.id }) { account ->
-                    HtmlCard(Modifier.padding(bottom = 10.dp), padding = PaddingValues(14.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                Modifier.size(44.dp).background(accountTint(account.type, c), RoundedCornerShape(14.dp)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(accountIcon(account.type), null, tint = accountAccent(account.type, c), modifier = Modifier.size(21.dp))
-                            }
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(account.name, color = c.primaryText, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
-                                Text(accountTypeLabel(account.type), color = c.mutedText, fontSize = 12.sp)
-                            }
-                            Text(
-                                money(account.balance, account.currency),
-                                color = if ((account.balance.toDoubleOrNull() ?: 0.0) < 0) c.error else c.primaryText,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 14.5.sp
-                            )
-                        }
-                    }
+                    SwipeAccountItem(
+                        account = account,
+                        currency = state.currency,
+                        onEdit = { editTarget = account },
+                        onDelete = { deleteTarget = account }
+                    )
                 }
             }
 
@@ -298,13 +297,116 @@ private fun AccountsScreen(state: MoneyMateState, onBack: () -> Unit) {
                 ) {
                     Icon(Icons.Filled.SwapHoriz, null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(7.dp))
-                    Text("Transfer between accounts", fontWeight = FontWeight.Bold)
+                    Text(tr("Transfer between accounts"), fontWeight = FontWeight.Bold)
                 }
             }
         }
     }
     if (add) AccountDialog(state) { add = false }
+    editTarget?.let { account -> AccountDialog(state, account) { editTarget = null } }
     if (transfer) TransferDialog(state) { transfer = false }
+    deleteTarget?.let { account ->
+        val scope = rememberCoroutineScope()
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text(tr("Remove account?")) },
+            text = { Text("Remove ${account.name}? Accounts with linked transactions may need those transactions removed first.") },
+            confirmButton = { TextButton(onClick = { scope.launch { if (state.deleteAccount(account.id)) deleteTarget = null } }) { Text(tr("Remove"), color = c.error) } },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text(tr("Cancel")) } }
+        )
+    }
+}
+
+
+// -----------------------------------------------------------------------------
+// Section: SwipeAccountItem
+// Purpose: Swipe right for Edit and left for Delete on existing accounts.
+// -----------------------------------------------------------------------------
+@Composable
+private fun SwipeAccountItem(
+    account: Account,
+    currency: String,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val c = LocalMoneyMateTokens.current
+    var offsetX by remember(account.id) { mutableFloatStateOf(0f) }
+
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(bottom = 10.dp)
+            .clip(RoundedCornerShape(18.dp))
+    ) {
+        Row(Modifier.matchParentSize()) {
+            Surface(
+                modifier = Modifier.width(92.dp).fillMaxHeight().clickable { offsetX = 0f; onEdit() },
+                color = c.action
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Edit, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text(tr("Edit"), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            Surface(
+                modifier = Modifier.width(92.dp).fillMaxHeight().clickable { offsetX = 0f; onDelete() },
+                color = c.error
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Delete, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text(tr("Delete"), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+
+        HtmlCard(
+            Modifier
+                .offset { IntOffset(offsetX.roundToInt(), 0) }
+                .pointerInput(account.id) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            offsetX = when {
+                                offsetX > 42f -> 92f
+                                offsetX < -42f -> -92f
+                                else -> 0f
+                            }
+                        },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            offsetX = (offsetX + dragAmount).coerceIn(-92f, 92f)
+                        }
+                    )
+                },
+            padding = PaddingValues(14.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(44.dp).background(accountTint(account.type, c), RoundedCornerShape(14.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(accountIcon(account.type), null, tint = accountAccent(account.type, c), modifier = Modifier.size(21.dp))
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(account.name, color = c.primaryText, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
+                    Text(accountTypeLabel(account.type), color = c.mutedText, fontSize = 12.sp)
+                }
+                Text(
+                    money(account.balance, account.currency.ifBlank { currency }),
+                    color = if ((account.balance.toDoubleOrNull() ?: 0.0) < 0) c.error else c.primaryText,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 14.5.sp
+                )
+            }
+        }
+    }
 }
 
 
@@ -329,7 +431,7 @@ private fun BudgetsScreen(state: MoneyMateState, onBack: () -> Unit) {
             item {
                 HtmlCard(padding = PaddingValues(18.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Total monthly budget", color = c.secondaryText, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Text(tr("Total monthly budget"), color = c.secondaryText, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                         Text("${money(totalSpent, state.currency)} / ${money(totalBudget, state.currency)}", color = c.primaryText, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
                     }
                     Spacer(Modifier.height(8.dp))
@@ -437,7 +539,7 @@ private fun GoalsScreen(state: MoneyMateState, onBack: () -> Unit) {
                         ) {
                             Icon(Icons.Filled.Add, null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(5.dp))
-                            Text("Add funds", fontWeight = FontWeight.Bold)
+                            Text(tr("Add funds"), fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -529,7 +631,7 @@ private fun BillsScreen(state: MoneyMateState, onBack: () -> Unit) {
                             ) {
                                 Icon(Icons.Filled.CheckCircle, null, modifier = Modifier.size(15.dp))
                                 Spacer(Modifier.width(5.dp))
-                                Text("Mark as Paid", fontWeight = FontWeight.Bold)
+                                Text(tr("Mark as Paid"), fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -626,15 +728,15 @@ private fun CalendarScreen(state: MoneyMateState, onBack: () -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(22.dp))
-                Text("Daily summary", color = c.primaryText, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
+                Text(tr("Daily summary"), color = c.primaryText, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
                 Spacer(Modifier.height(10.dp))
                 HtmlCard(padding = PaddingValues(14.dp)) {
                     val txs = state.transactions.filter { it.occurredAt.take(10) == selectedDay.toString() }
                     val bills = state.bills.filter { it.dueDate.take(10) == selectedDay.toString() }
                     val goals = state.savingsGoals.filter { it.targetDate?.take(10) == selectedDay.toString() }
                     if (txs.isEmpty() && bills.isEmpty() && goals.isEmpty()) {
-                        Text("No activity", color = c.primaryText, fontWeight = FontWeight.Bold)
-                        Text("No transactions were recorded on this day.", color = c.mutedText, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp))
+                        Text(tr("No activity"), color = c.primaryText, fontWeight = FontWeight.Bold)
+                        Text(tr("No transactions were recorded on this day."), color = c.mutedText, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp))
                     } else {
                         txs.forEachIndexed { index, tx ->
                             TransactionRow(state, tx, null)
@@ -823,7 +925,7 @@ private fun notificationTypeLabel(type: String): String = when (type.lowercase()
 @Composable
 private fun AdvancedAnalyticsScreen(state:MoneyMateState,onBack:()->Unit){
     val c=LocalMoneyMateTokens.current;val income=state.monthly.summary.totalIncome;val expense=state.monthly.summary.totalExpense;val savingsRate=if(income>0)((income-expense)/income*100)else 0.0;val avg=state.transactions.filter{it.type=="expense"}.mapNotNull{it.amount.toDoubleOrNull()}.average().takeIf{!it.isNaN()}?:0.0;val biggest=state.transactions.filter{it.type=="expense"}.maxByOrNull{it.amount.toDoubleOrNull()?:0.0};val top=state.categoryBreakdown.categories.firstOrNull()
-    LazyColumn(Modifier.fillMaxSize().background(c.background)){item{PageTitle("Advanced Analytics","Deeper signals from your MoneyMate data",onBack)};item{Row(Modifier.padding(horizontal=20.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)){StatCard("Savings Rate","${savingsRate.toInt()}%",savingsRate>=20,Modifier.weight(1f));StatCard("Avg Expense",money(avg,state.currency),false,Modifier.weight(1f))};Spacer(Modifier.height(10.dp));Row(Modifier.padding(horizontal=20.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)){StatCard("Top Category",top?.name?:"—",null,Modifier.weight(1f));StatCard("Largest Expense",biggest?.let{money(it.amount,state.currency)}?:"—",false,Modifier.weight(1f))}};item{Spacer(Modifier.height(18.dp));MMCard(Modifier.padding(horizontal=20.dp)){Text("Cash-flow health",color=c.primaryText,fontWeight=FontWeight.Bold);Spacer(Modifier.height(7.dp));ProgressLine((if(income>0)(income-expense).coerceAtLeast(0.0)/income else 0.0).toFloat());Spacer(Modifier.height(7.dp));Text("Net this month: ${money(income-expense,state.currency)}",color=c.secondaryText,fontSize=12.sp)}};item{Spacer(Modifier.height(12.dp));MMCard(Modifier.padding(horizontal=20.dp)){Text("Spending concentration",color=c.primaryText,fontWeight=FontWeight.Bold);Text(top?.let{"${it.name} represents ${it.percentage.toInt()}% of spending."}?:"Not enough spending data yet.",color=c.secondaryText,fontSize=12.sp)}}}
+    LazyColumn(Modifier.fillMaxSize().background(c.background)){item{PageTitle("Advanced Analytics","Deeper signals from your MoneyMate data",onBack)};item{Row(Modifier.padding(horizontal=20.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)){StatCard("Savings Rate","${savingsRate.toInt()}%",savingsRate>=20,Modifier.weight(1f));StatCard("Avg Expense",money(avg,state.currency),false,Modifier.weight(1f))};Spacer(Modifier.height(10.dp));Row(Modifier.padding(horizontal=20.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)){StatCard("Top Category",top?.name?:"—",null,Modifier.weight(1f));StatCard("Largest Expense",biggest?.let{money(it.amount,state.currency)}?:"—",false,Modifier.weight(1f))}};item{Spacer(Modifier.height(18.dp));MMCard(Modifier.padding(horizontal=20.dp)){Text(tr("Cash-flow health"),color=c.primaryText,fontWeight=FontWeight.Bold);Spacer(Modifier.height(7.dp));ProgressLine((if(income>0)(income-expense).coerceAtLeast(0.0)/income else 0.0).toFloat());Spacer(Modifier.height(7.dp));Text("Net this month: ${money(income-expense,state.currency)}",color=c.secondaryText,fontSize=12.sp)}};item{Spacer(Modifier.height(12.dp));MMCard(Modifier.padding(horizontal=20.dp)){Text(tr("Spending concentration"),color=c.primaryText,fontWeight=FontWeight.Bold);Text(top?.let{"${it.name} represents ${it.percentage.toInt()}% of spending."}?:"Not enough spending data yet.",color=c.secondaryText,fontSize=12.sp)}}}
 }
 
 
@@ -840,7 +942,7 @@ private fun AiInsightsScreen(state:MoneyMateState,onBack:()->Unit){
         "Projected Month-End Spend" to "At your current pace, you're on track to spend around ${money(projected,state.currency)} by month end.",
         (if(savingsRate>=20)"Healthy Savings Rate" else if(savingsRate<0)"Spending Exceeds Income" else "Savings Rate") to "${savingsRate.toInt()}% of this month's income remains after expenses."
     )
-    LazyColumn(Modifier.fillMaxSize().background(c.background)){item{PageTitle("AI Financial Insights","Private, rules-based insights computed on device",onBack)};items(insights){(title,desc)->MMCard(Modifier.padding(horizontal=20.dp,vertical=5.dp)){Text(title,color=c.primaryText,fontWeight=FontWeight.Bold);Spacer(Modifier.height(5.dp));Text(desc,color=c.secondaryText,fontSize=13.sp)}};item{Text("These insights are informational and not financial advice.",color=c.mutedText,fontSize=11.sp,modifier=Modifier.padding(20.dp))}}
+    LazyColumn(Modifier.fillMaxSize().background(c.background)){item{PageTitle("AI Financial Insights","Private, rules-based insights computed on device",onBack)};items(insights){(title,desc)->MMCard(Modifier.padding(horizontal=20.dp,vertical=5.dp)){Text(title,color=c.primaryText,fontWeight=FontWeight.Bold);Spacer(Modifier.height(5.dp));Text(desc,color=c.secondaryText,fontSize=13.sp)}};item{Text(tr("These insights are informational and not financial advice."),color=c.mutedText,fontSize=11.sp,modifier=Modifier.padding(20.dp))}}
 }
 
 
@@ -851,7 +953,7 @@ private fun AiInsightsScreen(state:MoneyMateState,onBack:()->Unit){
 @Composable
 private fun RecurringScreen(state:MoneyMateState,onBack:()->Unit){
     val c=LocalMoneyMateTokens.current;var items by remember{mutableStateOf(state.recurring())};var showAdd by remember{mutableStateOf(false)}
-    Column(Modifier.fillMaxSize().background(c.background)){PageTitle("Recurring Transactions","Due templates are posted when MoneyMate refreshes",onBack,"+ Add"){showAdd=true};if(items.isEmpty())EmptyState("No recurring transactions","Create a recurring salary, bill or expense template.")else LazyColumn{items(items,key={it.id}){r->MMCard(Modifier.padding(horizontal=20.dp,vertical=5.dp)){Row{Column(Modifier.weight(1f)){Text(r.title,color=c.primaryText,fontWeight=FontWeight.Bold);Text("${r.frequency.replaceFirstChar(Char::uppercase)} · next ${r.nextDate}",color=c.secondaryText,fontSize=12.sp)};Text(money(r.amount,state.currency),color=if(r.type=="income")c.success else c.error,fontWeight=FontWeight.Bold)};Row(verticalAlignment=Alignment.CenterVertically){Switch(checked=r.enabled,onCheckedChange={checked->items=items.map{if(it.id==r.id)it.copy(enabled=checked)else it};state.saveRecurring(items)});Spacer(Modifier.weight(1f));TextButton(onClick={items=items.filterNot{it.id==r.id};state.saveRecurring(items)}){Text("Delete",color=c.error)}}}}}}
+    Column(Modifier.fillMaxSize().background(c.background)){PageTitle("Recurring Transactions","Due templates are posted when MoneyMate refreshes",onBack,"+ Add"){showAdd=true};if(items.isEmpty())EmptyState("No recurring transactions","Create a recurring salary, bill or expense template.")else LazyColumn{items(items,key={it.id}){r->MMCard(Modifier.padding(horizontal=20.dp,vertical=5.dp)){Row{Column(Modifier.weight(1f)){Text(r.title,color=c.primaryText,fontWeight=FontWeight.Bold);Text("${r.frequency.replaceFirstChar(Char::uppercase)} · next ${r.nextDate}",color=c.secondaryText,fontSize=12.sp)};Text(money(r.amount,state.currency),color=if(r.type=="income")c.success else c.error,fontWeight=FontWeight.Bold)};Row(verticalAlignment=Alignment.CenterVertically){Switch(checked=r.enabled,onCheckedChange={checked->items=items.map{if(it.id==r.id)it.copy(enabled=checked)else it};state.saveRecurring(items)});Spacer(Modifier.weight(1f));TextButton(onClick={items=items.filterNot{it.id==r.id};state.saveRecurring(items)}){Text(tr("Delete"),color=c.error)}}}}}}
     if(showAdd) RecurringDialog(state,onDismiss={showAdd=false},onSave={new->items=items+new;state.saveRecurring(items);showAdd=false})
 }
 
@@ -863,7 +965,7 @@ private fun RecurringScreen(state:MoneyMateState,onBack:()->Unit){
 @Composable
 private fun RecurringDialog(state:MoneyMateState,onDismiss:()->Unit,onSave:(RecurringTemplate)->Unit){
     var title by remember{mutableStateOf("")};var amount by remember{mutableStateOf("")};var type by remember{mutableStateOf("expense")};var frequency by remember{mutableStateOf("monthly")};var date by remember{mutableStateOf(LocalDate.now().plusDays(1).toString())};var account by remember{mutableStateOf(state.accounts.firstOrNull())};var category by remember{mutableStateOf(CategoryCatalog.expenseCategories(state.categories).firstOrNull())}
-    AlertDialog(onDismissRequest=onDismiss,title={Text("Recurring Transaction")},text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){OutlinedTextField(title,{title=it},label={Text("Title")});OutlinedTextField(amount,{amount=it},label={Text("Amount")},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Decimal));Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){listOf("expense","income").forEach{FilterChip(selected=type==it,onClick={type=it;category=CategoryCatalog.ordered(state.categories,it).firstOrNull()},label={Text(it.replaceFirstChar(Char::uppercase))})}};PickerFieldPublic("Account",state.accounts,account,{it.name}){account=it};PickerFieldPublic("Category",CategoryCatalog.ordered(state.categories,type),category,{it.name}){category=it};Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){listOf("weekly","monthly","yearly").forEach{FilterChip(selected=frequency==it,onClick={frequency=it},label={Text(it.take(1).uppercase()+it.drop(1))})}};OutlinedTextField(date,{date=it},label={Text("Next date YYYY-MM-DD")})}},confirmButton={TextButton(onClick={val a=amount.toDoubleOrNull();if(title.isNotBlank()&&a!=null&&a>0&&account!=null&&runCatching{LocalDate.parse(date)}.isSuccess)onSave(RecurringTemplate(title=title.trim(),type=type,amount=a,accountId=account!!.id,categoryId=category?.id,frequency=frequency,nextDate=date))}){Text("Save")}},dismissButton={TextButton(onClick=onDismiss){Text("Cancel")}})
+    AlertDialog(onDismissRequest=onDismiss,title={Text(tr("Recurring Transaction"))},text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)){OutlinedTextField(title,{title=it},label={Text(tr("Title"))});OutlinedTextField(amount,{amount=it},label={Text(tr("Amount"))},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Decimal));Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){listOf("expense","income").forEach{FilterChip(selected=type==it,onClick={type=it;category=CategoryCatalog.ordered(state.categories,it).firstOrNull()},label={Text(it.replaceFirstChar(Char::uppercase))})}};PickerFieldPublic("Account",state.accounts,account,{it.name}){account=it};PickerFieldPublic("Category",CategoryCatalog.ordered(state.categories,type),category,{it.name}){category=it};Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){listOf("weekly","monthly","yearly").forEach{FilterChip(selected=frequency==it,onClick={frequency=it},label={Text(it.take(1).uppercase()+it.drop(1))})}};OutlinedTextField(date,{date=it},label={Text(tr("Next date YYYY-MM-DD"))})}},confirmButton={TextButton(onClick={val a=amount.toDoubleOrNull();if(title.isNotBlank()&&a!=null&&a>0&&account!=null&&runCatching{LocalDate.parse(date)}.isSuccess)onSave(RecurringTemplate(title=title.trim(),type=type,amount=a,accountId=account!!.id,categoryId=category?.id,frequency=frequency,nextDate=date))}){Text(tr("Save"))}},dismissButton={TextButton(onClick=onDismiss){Text(tr("Cancel"))}})
 }
 
 
@@ -875,7 +977,7 @@ private fun RecurringDialog(state:MoneyMateState,onDismiss:()->Unit,onSave:(Recu
 private fun AdvancedFiltersScreen(state:MoneyMateState,onBack:()->Unit){
     val c=LocalMoneyMateTokens.current;var query by remember{mutableStateOf("")};var type by remember{mutableStateOf("all")};var min by remember{mutableStateOf("")};var max by remember{mutableStateOf("")};var accountId by remember{mutableStateOf<Int?>(null)};var categoryId by remember{mutableStateOf<Int?>(null)}
     val result=state.transactions.filter{t->val a=t.amount.toDoubleOrNull()?:0.0;(type=="all"||t.type==type)&&(query.isBlank()||t.merchant.orEmpty().contains(query,true)||t.notes.orEmpty().contains(query,true))&&(min.toDoubleOrNull()?.let{a>=it}?:true)&&(max.toDoubleOrNull()?.let{a<=it}?:true)&&(accountId==null||t.accountId==accountId)&&(categoryId==null||t.categoryId==categoryId)}
-    Column(Modifier.fillMaxSize().background(c.background)){PageTitle("Advanced Search & Filters","${result.size} matches",onBack);Column(Modifier.padding(horizontal=20.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){OutlinedTextField(query,{query=it},label={Text("Search")},modifier=Modifier.fillMaxWidth());Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){listOf("all","expense","income").forEach{Pill(it.replaceFirstChar(Char::uppercase),type==it){type=it}}};Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){OutlinedTextField(min,{min=it},label={Text("Min")},modifier=Modifier.weight(1f),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Decimal));OutlinedTextField(max,{max=it},label={Text("Max")},modifier=Modifier.weight(1f),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Decimal))};PickerFieldPublic("Any account",listOf<Account?>(null)+state.accounts,accountId?.let{id->state.accounts.firstOrNull{it.id==id}},{it?.name?:"Any account"}){accountId=it?.id};PickerFieldPublic("Any category",listOf<Category?>(null)+CategoryCatalog.ordered(state.categories),categoryId?.let{id->state.categories.firstOrNull{it.id==id}},{it?.name?:"Any category"}){categoryId=it?.id}};Spacer(Modifier.height(8.dp));LazyColumn{items(result,key={it.id}){TransactionRow(state,it,null)}}}
+    Column(Modifier.fillMaxSize().background(c.background)){PageTitle("Advanced Search & Filters","${result.size} matches",onBack);Column(Modifier.padding(horizontal=20.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){OutlinedTextField(query,{query=it},label={Text(tr("Search"))},modifier=Modifier.fillMaxWidth());Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){listOf("all","expense","income").forEach{Pill(it.replaceFirstChar(Char::uppercase),type==it){type=it}}};Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){OutlinedTextField(min,{min=it},label={Text(tr("Min"))},modifier=Modifier.weight(1f),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Decimal));OutlinedTextField(max,{max=it},label={Text(tr("Max"))},modifier=Modifier.weight(1f),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Decimal))};PickerFieldPublic("Any account",listOf<Account?>(null)+state.accounts,accountId?.let{id->state.accounts.firstOrNull{it.id==id}},{it?.name?:"Any account"}){accountId=it?.id};PickerFieldPublic("Any category",listOf<Category?>(null)+CategoryCatalog.ordered(state.categories),categoryId?.let{id->state.categories.firstOrNull{it.id==id}},{it?.name?:"Any category"}){categoryId=it?.id}};Spacer(Modifier.height(8.dp));LazyColumn{items(result,key={it.id}){TransactionRow(state,it,null)}}}
 }
 
 
@@ -884,7 +986,7 @@ private fun AdvancedFiltersScreen(state:MoneyMateState,onBack:()->Unit){
 // Purpose: Renders the Appearance Screen user interface and handles its local interactions.
 // -----------------------------------------------------------------------------
 @Composable
-private fun AppearanceScreen(state:MoneyMateState,onBack:()->Unit,onDarkModeChange:(Boolean)->Unit){val c=LocalMoneyMateTokens.current;Column(Modifier.fillMaxSize().background(c.background)){PageTitle("Appearance","Default MoneyMate theme follows the supplied color system",onBack);MMCard(Modifier.padding(20.dp)){Row(verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f)){Text("Dark mode",color=c.primaryText,fontWeight=FontWeight.Bold);Text("Uses the PDF-defined dark companion surface hierarchy.",color=c.secondaryText,fontSize=12.sp)};Switch(checked=state.prefs.darkMode,onCheckedChange={state.prefs.darkMode=it;onDarkModeChange(it)})}}}}
+private fun AppearanceScreen(state:MoneyMateState,onBack:()->Unit,onDarkModeChange:(Boolean)->Unit){val c=LocalMoneyMateTokens.current;Column(Modifier.fillMaxSize().background(c.background)){PageTitle("Appearance","Default MoneyMate theme follows the supplied color system",onBack);MMCard(Modifier.padding(20.dp)){Row(verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f)){Text(tr("Dark mode"),color=c.primaryText,fontWeight=FontWeight.Bold);Text(tr("Uses the PDF-defined dark companion surface hierarchy."),color=c.secondaryText,fontSize=12.sp)};Switch(checked=state.prefs.darkMode,onCheckedChange={state.prefs.darkMode=it;onDarkModeChange(it)})}}}}
 
 
 // -----------------------------------------------------------------------------
@@ -892,7 +994,7 @@ private fun AppearanceScreen(state:MoneyMateState,onBack:()->Unit,onDarkModeChan
 // Purpose: Renders the Language Screen user interface and handles its local interactions.
 // -----------------------------------------------------------------------------
 @Composable
-private fun LanguageScreen(state:MoneyMateState,onBack:()->Unit){val c=LocalMoneyMateTokens.current;val scope=rememberCoroutineScope();Column(Modifier.fillMaxSize().background(c.background)){PageTitle("Language","Choose your preferred app/profile language",onBack);listOf("en" to "English","bn" to "বাংলা").forEach{(code,label)->MMCard(Modifier.padding(horizontal=20.dp,vertical=5.dp),onClick={scope.launch{val u=state.user?:return@launch;if(state.updateProfile(ProfileRequest(u.name?:"MoneyMate User",u.username,u.currency,code))){state.prefs.language=code}}}){Row{Text(label,color=c.primaryText,modifier=Modifier.weight(1f),fontWeight=FontWeight.SemiBold);if(state.language==code)Text("Selected",color=c.action)}}}}}
+private fun LanguageScreen(state:MoneyMateState,onBack:()->Unit){val c=LocalMoneyMateTokens.current;val scope=rememberCoroutineScope();Column(Modifier.fillMaxSize().background(c.background)){PageTitle("Language","Choose your preferred app/profile language",onBack);listOf("en" to "English","bn" to "বাংলা").forEach{(code,label)->MMCard(Modifier.padding(horizontal=20.dp,vertical=5.dp),onClick={scope.launch{val u=state.user?:return@launch;if(state.updateProfile(ProfileRequest(u.name?:"MoneyMate User",u.username,u.currency,code))){state.prefs.language=code}}}){Row{Text(label,color=c.primaryText,modifier=Modifier.weight(1f),fontWeight=FontWeight.SemiBold);if(state.language==code)Text(tr("Selected"),color=c.action)}}}}}
 
 
 // -----------------------------------------------------------------------------
@@ -900,7 +1002,7 @@ private fun LanguageScreen(state:MoneyMateState,onBack:()->Unit){val c=LocalMone
 // Purpose: Renders the Currency Screen user interface and handles its local interactions.
 // -----------------------------------------------------------------------------
 @Composable
-private fun CurrencyScreen(state:MoneyMateState,onBack:()->Unit){val c=LocalMoneyMateTokens.current;val scope=rememberCoroutineScope();val currencies=listOf("USD" to "US Dollar","BDT" to "Bangladeshi Taka","MYR" to "Malaysian Ringgit","EUR" to "Euro","GBP" to "British Pound","SGD" to "Singapore Dollar","INR" to "Indian Rupee");Column(Modifier.fillMaxSize().background(c.background)){PageTitle("Currency","Display currency; existing amounts are not converted",onBack);LazyColumn{items(currencies){(code,name)->MMCard(Modifier.padding(horizontal=20.dp,vertical=4.dp),onClick={scope.launch{val u=state.user?:return@launch;if(state.updateProfile(ProfileRequest(u.name?:"MoneyMate User",u.username,code,u.language))){state.prefs.currency=code}}}){Row{Column(Modifier.weight(1f)){Text(code,color=c.primaryText,fontWeight=FontWeight.Bold);Text(name,color=c.secondaryText,fontSize=12.sp)};if(state.currency==code)Text("Selected",color=c.action)}}}}}}
+private fun CurrencyScreen(state:MoneyMateState,onBack:()->Unit){val c=LocalMoneyMateTokens.current;val scope=rememberCoroutineScope();val currencies=listOf("USD" to "US Dollar","BDT" to "Bangladeshi Taka","MYR" to "Malaysian Ringgit","EUR" to "Euro","GBP" to "British Pound","SGD" to "Singapore Dollar","INR" to "Indian Rupee","AUD" to "Australian Dollar","CAD" to "Canadian Dollar","JPY" to "Japanese Yen","CNY" to "Chinese Yuan","KRW" to "South Korean Won","AED" to "UAE Dirham","SAR" to "Saudi Riyal","QAR" to "Qatari Riyal","KWD" to "Kuwaiti Dinar","CHF" to "Swiss Franc","NZD" to "New Zealand Dollar","THB" to "Thai Baht","IDR" to "Indonesian Rupiah","PHP" to "Philippine Peso","PKR" to "Pakistani Rupee","NPR" to "Nepalese Rupee","LKR" to "Sri Lankan Rupee","TRY" to "Turkish Lira","ZAR" to "South African Rand");Column(Modifier.fillMaxSize().background(c.background)){PageTitle("Currency","Display currency; existing amounts are not converted",onBack);LazyColumn{items(currencies){(code,name)->MMCard(Modifier.padding(horizontal=20.dp,vertical=4.dp),onClick={scope.launch{val u=state.user?:return@launch;if(state.updateProfile(ProfileRequest(u.name?:"MoneyMate User",u.username,code,u.language))){state.prefs.currency=code}}}){Row{Column(Modifier.weight(1f)){Text(code,color=c.primaryText,fontWeight=FontWeight.Bold);Text(name,color=c.secondaryText,fontSize=12.sp)};if(state.currency==code)Text(tr("Selected"),color=c.action)}}}}}}
 
 
 // -----------------------------------------------------------------------------
@@ -982,7 +1084,7 @@ private fun PremiumThemesScreen(state: MoneyMateState, onBack: () -> Unit) {
         PremiumHeader("Premium Themes", onBack)
         LazyColumn(contentPadding = PaddingValues(start=20.dp,end=20.dp,bottom=28.dp)) {
             item {
-                Text("Pick an accent theme for MoneyMate. Your choice applies instantly and is saved on this device.", color=c.secondaryText,fontSize=13.sp,modifier=Modifier.padding(vertical=12.dp))
+                Text(tr("Pick an accent theme for MoneyMate. Your choice applies instantly and is saved on this device."), color=c.secondaryText,fontSize=13.sp,modifier=Modifier.padding(vertical=12.dp))
             }
             items(PremiumThemes) { theme ->
                 val selected=state.selectedPremiumTheme==theme.name
@@ -999,7 +1101,7 @@ private fun PremiumThemesScreen(state: MoneyMateState, onBack: () -> Unit) {
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)){
                             Text(theme.name,color=c.primaryText,fontSize=15.sp,fontWeight=FontWeight.ExtraBold)
-                            Text("Full app re-theme",color=c.secondaryText,fontSize=11.5.sp)
+                            Text(tr("Full app re-theme"),color=c.secondaryText,fontSize=11.5.sp)
                             Spacer(Modifier.height(8.dp))
                             Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){
                                 listOf(theme.action,theme.brand,theme.success).forEach{col->Box(Modifier.size(14.dp).background(col,CircleShape))}
@@ -1040,7 +1142,7 @@ private fun PremiumHomeMini(theme:com.moneymate.app.ui.theme.PremiumThemeSpec){
     Column(Modifier.width(96.dp).height(150.dp).clip(RoundedCornerShape(14.dp)).background(theme.background).border(BorderStroke(1.dp,theme.border),RoundedCornerShape(14.dp))){
         Column(Modifier.fillMaxWidth().height(66.dp).background(Brush.linearGradient(listOf(theme.action,theme.brand))).padding(8.dp)){
             Row(Modifier.fillMaxWidth()){Box(Modifier.width(20.dp).height(7.dp).background(Color.White.copy(.25f),RoundedCornerShape(4.dp)));Spacer(Modifier.weight(1f));Box(Modifier.size(12.dp).background(Color.White.copy(.25f),CircleShape))}
-            Spacer(Modifier.height(8.dp));Text("BALANCE",color=Color.White.copy(.65f),fontSize=5.5.sp,fontWeight=FontWeight.Bold);Text("$12,480",color=Color.White,fontSize=11.sp,fontWeight=FontWeight.ExtraBold)
+            Spacer(Modifier.height(8.dp));Text(tr("BALANCE"),color=Color.White.copy(.65f),fontSize=5.5.sp,fontWeight=FontWeight.Bold);Text("$12,480",color=Color.White,fontSize=11.sp,fontWeight=FontWeight.ExtraBold)
         }
         Row(Modifier.padding(8.dp),horizontalArrangement=Arrangement.spacedBy(5.dp)){repeat(3){Box(Modifier.size(16.dp).background(theme.lightAction,RoundedCornerShape(6.dp)),contentAlignment=Alignment.Center){Box(Modifier.size(6.dp).background(theme.action,RoundedCornerShape(2.dp)))}}}
         Column(Modifier.padding(horizontal=8.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){repeat(2){Row(verticalAlignment=Alignment.CenterVertically){Box(Modifier.size(14.dp).background(theme.lightAction,RoundedCornerShape(5.dp)));Spacer(Modifier.width(5.dp));Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(2.dp)){Box(Modifier.fillMaxWidth(.7f).height(3.dp).background(theme.primaryText.copy(.55f),RoundedCornerShape(2.dp)));Box(Modifier.fillMaxWidth(.45f).height(3.dp).background(theme.mutedText.copy(.5f),RoundedCornerShape(2.dp)))};Spacer(Modifier.width(5.dp));Box(Modifier.width(16.dp).height(3.dp).background(theme.mutedText.copy(.45f),RoundedCornerShape(2.dp)))}}}
@@ -1069,14 +1171,14 @@ private fun PremiumIconsScreen(state: MoneyMateState, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().background(c.background)){
         PremiumHeader("Premium App Icons",onBack)
         LazyColumn(contentPadding=PaddingValues(horizontal=20.dp,vertical=12.dp)){
-            item{Text("Choose an alternate icon for your MoneyMate home screen shortcut.",color=c.secondaryText,fontSize=13.sp,modifier=Modifier.padding(bottom=16.dp))}
+            item{Text(tr("Choose an alternate icon for your MoneyMate home screen shortcut."),color=c.secondaryText,fontSize=13.sp,modifier=Modifier.padding(bottom=16.dp))}
             items(choices.chunked(2)){row->
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(14.dp)){
                     row.forEach{choice->
                         val selected=state.selectedAppIcon==choice.id || (choice.id=="Classic White"&&state.selectedAppIcon=="Classic")
                         Surface(onClick={state.setAppIcon(choice.id)},modifier=Modifier.weight(1f).height(178.dp),shape=RoundedCornerShape(20.dp),color=c.surface,border=BorderStroke(if(selected)2.dp else 1.dp,if(selected)c.warning else c.divider),shadowElevation=1.dp){
                             Box{
-                                if(choice.exclusive) Surface(shape=RoundedCornerShape(7.dp),color=c.warning,modifier=Modifier.align(Alignment.TopCenter).offset(y=(-7).dp)){Text("EXCLUSIVE",color=c.brand,fontSize=8.5.sp,fontWeight=FontWeight.ExtraBold,modifier=Modifier.padding(horizontal=8.dp,vertical=3.dp))}
+                                if(choice.exclusive) Surface(shape=RoundedCornerShape(7.dp),color=c.warning,modifier=Modifier.align(Alignment.TopCenter).offset(y=(-7).dp)){Text(tr("EXCLUSIVE"),color=c.brand,fontSize=8.5.sp,fontWeight=FontWeight.ExtraBold,modifier=Modifier.padding(horizontal=8.dp,vertical=3.dp))}
                                 Column(Modifier.fillMaxSize().padding(14.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){
                                     Box(Modifier.size(78.dp).background(Brush.linearGradient(listOf(choice.start,choice.end)),RoundedCornerShape(21.dp)),contentAlignment=Alignment.Center){
                                         androidx.compose.foundation.Image(painterResource(R.drawable.moneymate_logo),null,modifier=Modifier.size(54.dp))
@@ -1137,7 +1239,7 @@ private fun SecurityScreen(
                 }
             }
             HorizontalDivider(color = c.divider)
-            Text("Auto Lock", color = c.primaryText, fontWeight = FontWeight.Bold)
+            Text(tr("Auto Lock"), color = c.primaryText, fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf(1, 5, 15, 30).forEach { minutes ->
                     Pill("$minutes min", auto == minutes) {
@@ -1150,22 +1252,22 @@ private fun SecurityScreen(
             OutlinedButton(
                 onClick = { passDialog = true },
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("Change Account Password") }
+            ) { Text(tr("Change Account Password")) }
             if (state.prefs.hasPin()) {
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = { state.lockRequested = true },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Lock MoneyMate Now") }
+                ) { Text(tr("Lock MoneyMate Now")) }
                 TextButton(onClick = {
                     state.prefs.setPin(null)
                     state.prefs.biometricEnabled = false
                     bio = false
-                }) { Text("Remove PIN Lock", color = c.error) }
+                }) { Text(tr("Remove PIN Lock"), color = c.error) }
             }
 
             HorizontalDivider(color = c.divider, modifier = Modifier.padding(vertical = 10.dp))
-            Text("Danger Zone", color = c.error, fontWeight = FontWeight.Bold)
+            Text(tr("Danger Zone"), color = c.error, fontWeight = FontWeight.Bold)
             Text(
                 "Permanently deletes your MoneyMate account and all associated finance data.",
                 color = c.secondaryText,
@@ -1175,7 +1277,7 @@ private fun SecurityScreen(
             OutlinedButton(
                 onClick = { deleteAccountDialog = true },
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("Delete Account Permanently", color = c.error) }
+            ) { Text(tr("Delete Account Permanently"), color = c.error) }
         }
     }
 
@@ -1185,7 +1287,7 @@ private fun SecurityScreen(
     if (deleteAccountDialog) {
         AlertDialog(
             onDismissRequest = { deleteAccountDialog = false },
-            title = { Text("Delete MoneyMate account?") },
+            title = { Text(tr("Delete MoneyMate account?")) },
             text = {
                 Text(
                     "This permanently deletes your profile, accounts, transactions, budgets, savings goals, bills and notifications. This cannot be undone."
@@ -1199,10 +1301,10 @@ private fun SecurityScreen(
                             onSignOut()
                         }
                     }
-                }) { Text("Delete Permanently", color = c.error) }
+                }) { Text(tr("Delete Permanently"), color = c.error) }
             },
             dismissButton = {
-                TextButton(onClick = { deleteAccountDialog = false }) { Text("Cancel") }
+                TextButton(onClick = { deleteAccountDialog = false }) { Text(tr("Cancel")) }
             }
         )
     }
@@ -1214,7 +1316,7 @@ private fun SecurityScreen(
 // Purpose: Renders and manages the Pin Dialog modal UI flow.
 // -----------------------------------------------------------------------------
 @Composable
-private fun PinDialog(state:MoneyMateState,onDismiss:()->Unit){var pin by remember{mutableStateOf("")};var confirm by remember{mutableStateOf("")};var error by remember{mutableStateOf<String?>(null)};AlertDialog(onDismissRequest=onDismiss,title={Text(if(state.prefs.hasPin())"Change PIN" else "Set PIN")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){OutlinedTextField(pin,{pin=it.filter(Char::isDigit).take(6)},label={Text("4–6 digit PIN")},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.NumberPassword));OutlinedTextField(confirm,{confirm=it.filter(Char::isDigit).take(6)},label={Text("Confirm PIN")},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.NumberPassword));error?.let{Text(it,color=MaterialTheme.colorScheme.error)}}},confirmButton={TextButton(onClick={if(pin.length !in 4..6||pin!=confirm)error="PINs must match and contain 4–6 digits." else{state.prefs.setPin(pin);onDismiss()}}){Text("Save")}},dismissButton={TextButton(onClick=onDismiss){Text("Cancel")}})}
+private fun PinDialog(state:MoneyMateState,onDismiss:()->Unit){var pin by remember{mutableStateOf("")};var confirm by remember{mutableStateOf("")};var error by remember{mutableStateOf<String?>(null)};AlertDialog(onDismissRequest=onDismiss,title={Text(if(state.prefs.hasPin())"Change PIN" else "Set PIN")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){OutlinedTextField(pin,{pin=it.filter(Char::isDigit).take(6)},label={Text(tr("4–6 digit PIN"))},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.NumberPassword));OutlinedTextField(confirm,{confirm=it.filter(Char::isDigit).take(6)},label={Text(tr("Confirm PIN"))},keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.NumberPassword));error?.let{Text(it,color=MaterialTheme.colorScheme.error)}}},confirmButton={TextButton(onClick={if(pin.length !in 4..6||pin!=confirm)error="PINs must match and contain 4–6 digits." else{state.prefs.setPin(pin);onDismiss()}}){Text(tr("Save"))}},dismissButton={TextButton(onClick=onDismiss){Text(tr("Cancel"))}})}
 
 
 // -----------------------------------------------------------------------------
@@ -1222,7 +1324,7 @@ private fun PinDialog(state:MoneyMateState,onDismiss:()->Unit){var pin by rememb
 // Purpose: Renders and manages the Change Password Dialog modal UI flow.
 // -----------------------------------------------------------------------------
 @Composable
-private fun ChangePasswordDialog(state:MoneyMateState,onDismiss:()->Unit){val scope=rememberCoroutineScope();var old by remember{mutableStateOf("")};var next by remember{mutableStateOf("")};var error by remember{mutableStateOf<String?>(null)};AlertDialog(onDismissRequest=onDismiss,title={Text("Change Password")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){OutlinedTextField(old,{old=it},label={Text("Current password")});OutlinedTextField(next,{next=it},label={Text("New password")});error?.let{Text(it,color=MaterialTheme.colorScheme.error)}}},confirmButton={TextButton(onClick={scope.launch{if(state.changePassword(old,next))onDismiss()else error=state.error}}){Text("Change")}},dismissButton={TextButton(onClick=onDismiss){Text("Cancel")}})}
+private fun ChangePasswordDialog(state:MoneyMateState,onDismiss:()->Unit){val scope=rememberCoroutineScope();var old by remember{mutableStateOf("")};var next by remember{mutableStateOf("")};var error by remember{mutableStateOf<String?>(null)};AlertDialog(onDismissRequest=onDismiss,title={Text(tr("Change Password"))},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){OutlinedTextField(old,{old=it},label={Text(tr("Current password"))});OutlinedTextField(next,{next=it},label={Text(tr("New password"))});error?.let{Text(it,color=MaterialTheme.colorScheme.error)}}},confirmButton={TextButton(onClick={scope.launch{if(state.changePassword(old,next))onDismiss()else error=state.error}}){Text(tr("Change"))}},dismissButton={TextButton(onClick=onDismiss){Text(tr("Cancel"))}})}
 
 
 // -----------------------------------------------------------------------------
@@ -1258,7 +1360,7 @@ private fun BackupScreen(state: MoneyMateState, onBack: () -> Unit) {
                 ) {
                     Icon(Icons.Filled.CloudDone, null, tint = c.action, modifier = Modifier.size(34.dp))
                     Spacer(Modifier.height(10.dp))
-                    Text("Cloud Backup", color = c.primaryText, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
+                    Text(tr("Cloud Backup"), color = c.primaryText, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
                     Text(lastBackup, color = c.mutedText, fontSize = 12.5.sp, modifier = Modifier.padding(top = 2.dp))
                 }
             }
@@ -1272,7 +1374,7 @@ private fun BackupScreen(state: MoneyMateState, onBack: () -> Unit) {
                 }
             }
             Spacer(Modifier.height(22.dp))
-            Text("BACKUP HISTORY", color = c.mutedText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text(tr("BACKUP HISTORY"), color = c.mutedText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(10.dp))
             MMCard {
                 Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1281,7 +1383,7 @@ private fun BackupScreen(state: MoneyMateState, onBack: () -> Unit) {
                     }
                     Spacer(Modifier.width(11.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("MoneyMate Backup", color = c.primaryText, fontWeight = FontWeight.SemiBold, fontSize = 13.5.sp)
+                        Text(tr("MoneyMate Backup"), color = c.primaryText, fontWeight = FontWeight.SemiBold, fontSize = 13.5.sp)
                         Text(lastBackup, color = c.secondaryText, fontSize = 11.5.sp)
                     }
                     Icon(Icons.Filled.CheckCircle, null, tint = c.success, modifier = Modifier.size(18.dp))
@@ -1306,7 +1408,7 @@ private fun PremiumRibbon() {
     ) {
         Icon(Icons.Filled.WorkspacePremium, null, tint = c.warning, modifier = Modifier.size(14.dp))
         Spacer(Modifier.width(5.dp))
-        Text("Premium Feature", color = c.warning, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Text(tr("Premium Feature"), color = c.warning, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -1316,7 +1418,7 @@ private fun PremiumRibbon() {
 // Purpose: Renders the Restore Screen user interface and handles its local interactions.
 // -----------------------------------------------------------------------------
 @Composable
-private fun RestoreScreen(state:MoneyMateState,onBack:()->Unit){val c=LocalMoneyMateTokens.current;val context=LocalContext.current;val scope=rememberCoroutineScope();var file by remember{mutableStateOf<File?>(null)};var status by remember{mutableStateOf<String?>(null)};var confirmed by remember{mutableStateOf(false)};val launcher=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->if(uri!=null){val temp=File(context.cacheDir,"restore-${System.currentTimeMillis()}.json");context.contentResolver.openInputStream(uri)?.use{input->temp.outputStream().use{input.copyTo(it)}};file=temp;scope.launch{when(val r=state.repository.validateRestore(temp)){is RepoResult.Success->{status="Backup is valid and ready to restore.";confirmed=true};is RepoResult.Error->{status=r.message;confirmed=false}}}}};Column(Modifier.fillMaxSize().background(c.background)){PageTitle("Restore","Validate before replacing financial data",onBack);MMCard(Modifier.padding(20.dp)){Text("Restore replaces your current finance records atomically. Your login credentials are not replaced.",color=c.secondaryText,fontSize=13.sp);Spacer(Modifier.height(12.dp));OutlinedButton(onClick={launcher.launch(arrayOf("application/json","text/plain"))},modifier=Modifier.fillMaxWidth()){Text("Choose Backup File")};status?.let{Spacer(Modifier.height(10.dp));Text(it,color=if(confirmed)c.success else c.error)};if(confirmed&&file!=null){Spacer(Modifier.height(12.dp));PrimaryButton("Confirm RESTORE"){scope.launch{when(val r=state.repository.restore(file!!)){is RepoResult.Success->{status="Restore complete. ${r.data.restored?.transactions?:0} transactions restored.";confirmed=false;state.loadAll(false)};is RepoResult.Error->{status=r.message}}}}}}}}
+private fun RestoreScreen(state:MoneyMateState,onBack:()->Unit){val c=LocalMoneyMateTokens.current;val context=LocalContext.current;val scope=rememberCoroutineScope();var file by remember{mutableStateOf<File?>(null)};var status by remember{mutableStateOf<String?>(null)};var confirmed by remember{mutableStateOf(false)};val launcher=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->if(uri!=null){val temp=File(context.cacheDir,"restore-${System.currentTimeMillis()}.json");context.contentResolver.openInputStream(uri)?.use{input->temp.outputStream().use{input.copyTo(it)}};file=temp;scope.launch{when(val r=state.repository.validateRestore(temp)){is RepoResult.Success->{status="Backup is valid and ready to restore.";confirmed=true};is RepoResult.Error->{status=r.message;confirmed=false}}}}};Column(Modifier.fillMaxSize().background(c.background)){PageTitle("Restore","Validate before replacing financial data",onBack);MMCard(Modifier.padding(20.dp)){Text(tr("Restore replaces your current finance records atomically. Your login credentials are not replaced."),color=c.secondaryText,fontSize=13.sp);Spacer(Modifier.height(12.dp));OutlinedButton(onClick={launcher.launch(arrayOf("application/json","text/plain"))},modifier=Modifier.fillMaxWidth()){Text(tr("Choose Backup File"))};status?.let{Spacer(Modifier.height(10.dp));Text(it,color=if(confirmed)c.success else c.error)};if(confirmed&&file!=null){Spacer(Modifier.height(12.dp));PrimaryButton("Confirm RESTORE"){scope.launch{when(val r=state.repository.restore(file!!)){is RepoResult.Success->{status="Restore complete. ${r.data.restored?.transactions?:0} transactions restored.";confirmed=false;state.loadAll(false)};is RepoResult.Error->{status=r.message}}}}}}}}
 
 
 // -----------------------------------------------------------------------------
@@ -1327,45 +1429,120 @@ private fun RestoreScreen(state:MoneyMateState,onBack:()->Unit){val c=LocalMoney
 private fun ExportScreen(state: MoneyMateState, onBack: () -> Unit) {
     val c = LocalMoneyMateTokens.current
     val context = LocalContext.current
-    var format by remember { mutableStateOf("CSV") }
+    var format by remember { mutableStateOf("PDF") }
     var range by remember { mutableStateOf("This Month") }
     var csvPending by remember { mutableStateOf<String?>(null) }
     var pdfPending by remember { mutableStateOf<ByteArray?>(null) }
-    var status by remember { mutableStateOf<String?>(null) }
+
+    val selectedTransactions = remember(state.transactions, range) { exportTransactions(state, range) }
+    val incomeTotal = selectedTransactions.filter { it.type.equals("income", true) }.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
+    val expenseTotal = selectedTransactions.filter { it.type.equals("expense", true) }.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
+
     val csvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
-        if (uri != null && csvPending != null) { context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(csvPending!!) }; status = "Export Ready" }
+        if (uri != null && csvPending != null) {
+            context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(csvPending!!) }
+            state.message = "Export successfully saved"
+        }
         csvPending = null
     }
     val pdfLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        if (uri != null && pdfPending != null) { context.contentResolver.openOutputStream(uri)?.use { it.write(pdfPending!!) }; status = "Export Ready" }
+        if (uri != null && pdfPending != null) {
+            context.contentResolver.openOutputStream(uri)?.use { it.write(pdfPending!!) }
+            state.message = "Export successfully saved"
+        }
         pdfPending = null
     }
+
     Column(Modifier.fillMaxSize().background(c.background)) {
-        PageTitle("Export Data", onBack = onBack)
-        Column(Modifier.padding(horizontal = 20.dp)) {
-            Text("Format", color = c.primaryText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Pill("CSV", format == "CSV") { format = "CSV" }
-                Pill("PDF", format == "PDF") { format = "PDF" }
+        PageTitle("Export Data", "Professional financial statement", onBack)
+        Column(
+            Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            MMCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(44.dp).background(c.lightAction, RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
+                        Icon(if (format == "PDF") Icons.Filled.PictureAsPdf else Icons.Filled.TableChart, null, tint = c.action)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(tr("MoneyMate Statement"), color = c.primaryText, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                        Text(tr("Income, expenses, category totals and final summary"), color = c.secondaryText, fontSize = 12.sp)
+                    }
+                }
+            }
+
+            Text(tr("Export format"), color = c.primaryText, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(
+                    modifier = Modifier.weight(1f).clickable { format = "PDF" },
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (format == "PDF") c.lightAction else c.surface,
+                    border = BorderStroke(1.dp, if (format == "PDF") c.action else c.border)
+                ) {
+                    Column(Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Filled.PictureAsPdf, null, tint = if (format == "PDF") c.action else c.mutedText)
+                        Spacer(Modifier.height(6.dp)); Text(tr("PDF"), color = c.primaryText, fontWeight = FontWeight.Bold)
+                        Text(tr("Color statement"), color = c.secondaryText, fontSize = 10.5.sp)
+                    }
+                }
+                Surface(
+                    modifier = Modifier.weight(1f).clickable { format = "CSV" },
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (format == "CSV") c.lightAction else c.surface,
+                    border = BorderStroke(1.dp, if (format == "CSV") c.action else c.border)
+                ) {
+                    Column(Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Filled.TableChart, null, tint = if (format == "CSV") c.action else c.mutedText)
+                        Spacer(Modifier.height(6.dp)); Text(tr("CSV"), color = c.primaryText, fontWeight = FontWeight.Bold)
+                        Text(tr("Structured tables"), color = c.secondaryText, fontSize = 10.5.sp)
+                    }
+                }
+            }
+
+            Text(tr("Date range"), color = c.primaryText, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("This Month", "Last Month", "This Year", "All Time").forEach { Pill(it, range == it) { range = it } }
+            }
+
+            MMCard {
+                Text(tr("Statement preview"), color = c.primaryText, fontWeight = FontWeight.ExtraBold)
+                Spacer(Modifier.height(12.dp))
+                ExportPreviewRow("Transactions", selectedTransactions.count().toString(), c.primaryText)
+                ExportPreviewRow("Total Income", money(incomeTotal, state.currency), c.success)
+                ExportPreviewRow("Total Expenses", money(expenseTotal, state.currency), c.error)
+                Divider(color = c.divider)
+                ExportPreviewRow("Net", money(incomeTotal - expenseTotal, state.currency), if (incomeTotal >= expenseTotal) c.success else c.error)
+            }
+
+            Text(
+                if (format == "PDF") "PDF includes separate Income and Expense pages, category summaries, and a final MoneyMate summary page."
+                else "CSV is organized into separate Income and Expense table sections with category totals and a final summary.",
+                color = c.secondaryText,
+                fontSize = 12.sp,
+                lineHeight = 18.sp
+            )
+
+            PrimaryButton("Export $format") {
+                if (format == "CSV") {
+                    csvPending = buildCsv(state, range)
+                    csvLauncher.launch("MoneyMate-${range.replace(" ", "-")}-${LocalDate.now()}.csv")
+                } else {
+                    pdfPending = buildPdf(state, range)
+                    pdfLauncher.launch("MoneyMate-${range.replace(" ", "-")}-${LocalDate.now()}.pdf")
+                }
             }
             Spacer(Modifier.height(18.dp))
-            Text("Date Range", color = c.primaryText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                listOf("This Month", "Last Month").forEach { Pill(it, range == it) { range = it } }
-            }
-            Spacer(Modifier.height(7.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                listOf("This Year", "All Time").forEach { Pill(it, range == it) { range = it } }
-            }
-            Spacer(Modifier.height(22.dp))
-            PrimaryButton("Generate Export") {
-                if (format == "CSV") { csvPending = buildCsv(state); csvLauncher.launch("moneymate-${LocalDate.now()}.csv") }
-                else { pdfPending = buildPdf(state); pdfLauncher.launch("moneymate-${LocalDate.now()}.pdf") }
-            }
-            status?.let { Text(it, color = c.success, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp)) }
         }
+    }
+}
+
+@Composable
+private fun ExportPreviewRow(label: String, value: String, valueColor: Color) {
+    val c = LocalMoneyMateTokens.current
+    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+        Text(label, color = c.secondaryText, fontSize = 12.5.sp, modifier = Modifier.weight(1f))
+        Text(value, color = valueColor, fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold)
     }
 }
 
@@ -1400,9 +1577,9 @@ private fun ImportScreen(state: MoneyMateState, onBack: () -> Unit) {
                 Column(Modifier.padding(horizontal = 20.dp, vertical = 30.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Filled.UploadFile, null, tint = c.mutedText, modifier = Modifier.size(32.dp))
                     Spacer(Modifier.height(10.dp))
-                    Text("Select a CSV file exported from MoneyMate or another finance app.", color = c.secondaryText, fontSize = 13.sp, lineHeight = 18.sp)
+                    Text(tr("Select a CSV file exported from MoneyMate or another finance app."), color = c.secondaryText, fontSize = 13.sp, lineHeight = 18.sp)
                     Spacer(Modifier.height(14.dp))
-                    OutlinedButton(onClick = { launcher.launch(arrayOf("text/csv", "text/plain", "application/csv")) }) { Text("Choose File") }
+                    OutlinedButton(onClick = { launcher.launch(arrayOf("text/csv", "text/plain", "application/csv")) }) { Text(tr("Choose File")) }
                     selectedName?.let { Text(it, color = c.mutedText, fontSize = 12.5.sp, modifier = Modifier.padding(top = 10.dp)) }
                 }
             }
@@ -1412,7 +1589,7 @@ private fun ImportScreen(state: MoneyMateState, onBack: () -> Unit) {
                 enabled = selectedText != null,
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(14.dp)
-            ) { Text("Import", fontWeight = FontWeight.Bold) }
+            ) { Text(tr("Import"), fontWeight = FontWeight.Bold) }
             status?.let { Text(it, color = c.secondaryText, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp)) }
         }
     }
@@ -1431,21 +1608,43 @@ private fun EditProfileScreen(state: MoneyMateState, onBack: () -> Unit) {
     var name by remember(u) { mutableStateOf(u?.name.orEmpty()) }
     var email by remember(u) { mutableStateOf(u?.email.orEmpty()) }
     var status by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
     val initials = name.trim().split(" ").filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1).uppercase() }.ifBlank { "MM" }
+    val imageUrl = u?.profileImageUrl?.let { if (it.startsWith("http")) it else BuildConfig.API_BASE_URL.trimEnd('/') + it }
+    val photoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) scope.launch {
+            runCatching {
+                val temp = File.createTempFile("profile-", ".jpg", context.cacheDir)
+                context.contentResolver.openInputStream(uri)?.use { input -> temp.outputStream().use { output -> input.copyTo(output) } }
+                temp
+            }.onSuccess { state.uploadProfileImage(it) }
+             .onFailure { state.error = it.message ?: "Unable to read selected photo" }
+        }
+    }
 
     Column(Modifier.fillMaxSize().background(c.background)) {
         PageTitle("Edit Profile", onBack = onBack)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
             Box(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 24.dp), contentAlignment = Alignment.Center) {
-                Box(
-                    Modifier.size(64.dp).background(c.action, RoundedCornerShape(20.dp)),
-                    contentAlignment = Alignment.Center
-                ) { Text(initials, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold) }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(
+                        Modifier.size(76.dp).clip(CircleShape).background(c.action),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (!imageUrl.isNullOrBlank()) AsyncImage(model = imageUrl, contentDescription = "Profile photo", modifier = Modifier.fillMaxSize().clip(CircleShape))
+                        else Text(initials, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+                    TextButton(onClick = { photoLauncher.launch("image/*") }) {
+                        Icon(Icons.Filled.PhotoCamera, null, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (imageUrl.isNullOrBlank()) "Add photo" else "Change photo")
+                    }
+                }
             }
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("Full Name") },
+                label = { Text(tr("Full Name")) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
@@ -1453,7 +1652,7 @@ private fun EditProfileScreen(state: MoneyMateState, onBack: () -> Unit) {
             OutlinedTextField(
                 value = email,
                 onValueChange = { email = it },
-                label = { Text("Email Address") },
+                label = { Text(tr("Email Address")) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 enabled = false
@@ -1478,7 +1677,60 @@ private fun EditProfileScreen(state: MoneyMateState, onBack: () -> Unit) {
 // Purpose: Renders the Plans Screen user interface and handles its local interactions.
 // -----------------------------------------------------------------------------
 @Composable
-private fun PlansScreen(state:MoneyMateState,onBack:()->Unit){val c=LocalMoneyMateTokens.current;var selected by remember{mutableStateOf("Yearly")};Column(Modifier.fillMaxSize().background(c.background)){PageTitle("Choose Your Plan","Select the MoneyMate Premium plan that fits you best.",onBack);listOf("Monthly" to "Flexible monthly access","6 Months" to "Save 24%","Yearly" to "Best Value · Save 32%").forEach{(plan,sub)->MMCard(Modifier.padding(horizontal=20.dp,vertical=5.dp),onClick={selected=plan}){Row{Column(Modifier.weight(1f)){Text(plan,color=c.primaryText,fontWeight=FontWeight.Bold);Text(sub,color=c.secondaryText,fontSize=12.sp)};RadioButton(selected=selected==plan,onClick={selected=plan})}}};Spacer(Modifier.height(12.dp));Box(Modifier.padding(horizontal=20.dp)){PrimaryButton("Continue to Subscription"){state.message="Google Play Billing must be configured with your real subscription product IDs before store release."}}}}
+private fun PlansScreen(state: MoneyMateState, onBack: () -> Unit) {
+    val c = LocalMoneyMateTokens.current
+    val context = LocalContext.current
+    val activity = context as? Activity
+    var snapshot by remember { mutableStateOf(PlayBillingManager.BillingSnapshot()) }
+    val billing = remember { PlayBillingManager(context) { next ->
+        snapshot = snapshot.copy(
+            ready = next.ready || snapshot.ready,
+            premium = next.premium || snapshot.premium,
+            plans = if (next.plans.isNotEmpty()) next.plans else snapshot.plans,
+            message = next.message
+        )
+    } }
+    var selectedId by remember { mutableStateOf(PlayBillingManager.YEARLY) }
+    LaunchedEffect(Unit) { billing.start() }
+    DisposableEffect(Unit) { onDispose { billing.close() } }
+
+    Column(Modifier.fillMaxSize().background(c.background)) {
+        PageTitle(
+            if (state.language == "bn") "প্রিমিয়াম প্ল্যান" else "Choose Your Plan",
+            if (state.language == "bn") "মূল্য সরাসরি Google Play থেকে দেখানো হয়।" else "Prices are loaded directly from Google Play.",
+            onBack
+        )
+        if (!snapshot.ready) {
+            Box(Modifier.fillMaxWidth().padding(28.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        } else if (snapshot.plans.isEmpty()) {
+            Text(
+                if (state.language == "bn") "Google Play Console-এ Premium subscription product প্রকাশ করলে প্ল্যান ও মূল্য এখানে স্বয়ংক্রিয়ভাবে দেখাবে।" else "Publish the Premium subscription products in Google Play Console and the plans and localized prices will appear here automatically.",
+                color = c.secondaryText,
+                modifier = Modifier.padding(20.dp)
+            )
+        } else {
+            snapshot.plans.forEach { plan ->
+                MMCard(Modifier.padding(horizontal = 20.dp, vertical = 5.dp), onClick = { selectedId = plan.id }) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(plan.title, color = c.primaryText, fontWeight = FontWeight.Bold)
+                            Text(plan.price, color = c.action, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        }
+                        RadioButton(selected = selectedId == plan.id, onClick = { selectedId = plan.id })
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            Box(Modifier.padding(horizontal = 20.dp)) {
+                PrimaryButton(if (snapshot.premium) "Premium Active" else if (state.language == "bn") "Google Play দিয়ে সাবস্ক্রাইব করুন" else "Subscribe with Google Play", enabled = !snapshot.premium) {
+                    val plan = snapshot.plans.firstOrNull { it.id == selectedId }
+                    if (activity != null && plan != null) billing.purchase(activity, plan)
+                }
+            }
+        }
+        snapshot.message?.let { Text(it, color = c.error, modifier = Modifier.padding(20.dp), fontSize = 12.sp) }
+    }
+}
 
 
 // -----------------------------------------------------------------------------
@@ -1488,6 +1740,7 @@ private fun PlansScreen(state:MoneyMateState,onBack:()->Unit){val c=LocalMoneyMa
 @Composable
 private fun ContactScreen(onBack: () -> Unit) {
     val c = LocalMoneyMateTokens.current
+    val context = LocalContext.current
     var subject by remember { mutableStateOf("General") }
     var message by remember { mutableStateOf("") }
     var sent by remember { mutableStateOf(false) }
@@ -1497,13 +1750,13 @@ private fun ContactScreen(onBack: () -> Unit) {
         PageTitle("Contact Support", onBack = onBack)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
             Text(
-                "We usually respond within 24 hours. You can also email us directly at support@moneymate.app.",
+                "We usually respond within 24 hours. You can also email us directly at support.moneymate@gmail.com.",
                 color = c.secondaryText,
                 fontSize = 13.sp,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
             )
             Spacer(Modifier.height(16.dp))
-            Text("Subject", color = c.primaryText, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+            Text(tr("Subject"), color = c.primaryText, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 subjects.take(2).forEach { Pill(it, subject == it) { subject = it } }
@@ -1516,14 +1769,24 @@ private fun ContactScreen(onBack: () -> Unit) {
             OutlinedTextField(
                 value = message,
                 onValueChange = { message = it; sent = false },
-                label = { Text("Message") },
-                placeholder = { Text("Describe your issue or question…") },
+                label = { Text(tr("Message")) },
+                placeholder = { Text(tr("Describe your issue or question…")) },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 150.dp),
                 minLines = 5
             )
             Spacer(Modifier.height(16.dp))
-            PrimaryButton("Send Message") { if (message.isNotBlank()) sent = true }
-            if (sent) Text("Message Sent", color = c.success, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp))
+            PrimaryButton("Send Message") {
+                if (message.isNotBlank()) {
+                    val emailIntent = Intent(Intent.ACTION_SENDTO).apply {
+                        data = Uri.parse("mailto:support.moneymate@gmail.com")
+                        putExtra(Intent.EXTRA_SUBJECT, "MoneyMate Support - $subject")
+                        putExtra(Intent.EXTRA_TEXT, message)
+                    }
+                    runCatching { context.startActivity(emailIntent) }
+                    sent = true
+                }
+            }
+            if (sent) Text(tr("Opening your email app…"), color = c.success, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp))
         }
     }
 }
@@ -1538,8 +1801,10 @@ private fun HelpCenterScreen(onBack: () -> Unit) {
     val c = LocalMoneyMateTokens.current
     val groups = listOf(
         "Getting Started" to listOf(
-            "Setting up your first account" to "Go to Settings → My Accounts → Add Account to create your first account, then start logging transactions from the + button.",
-            "Choosing Guest Mode vs an account" to "Guest Mode lets you try MoneyMate instantly with data stored only on this device. Creating an account unlocks account-backed features."
+            "Do I need an account?" to "Yes. A MoneyMate account securely connects your financial data to the configured backend and enables account-backed syncing.",
+            "Setting up your first account" to "Go to Profile → My Accounts → Add Account to create your first account, then start logging transactions from the + button.",
+            "Choosing Guest Mode vs an account" to "Guest Mode lets you try MoneyMate instantly with data stored only on this device. Creating an account unlocks account-backed features.",
+            "Can I change language and currency?" to "Yes. Open Profile and use Language or Currency under General."
         ),
         "Managing Transactions" to listOf(
             "Adding an income or expense" to "Tap the + button, choose Income or Expense, fill in the amount and category, then save.",
@@ -1551,8 +1816,9 @@ private fun HelpCenterScreen(onBack: () -> Unit) {
             "Setting a savings goal" to "Go to Settings → Savings Goals to create a target and log contributions."
         ),
         "Backup & Security" to listOf(
-            "Backing up your data" to "Use Settings → Backup for a full backup, or Export Data for a portable file.",
-            "Securing the app with PIN or biometrics" to "Enable PIN Lock and Biometric Authentication from Settings → Security."
+            "Backing up your data" to "Use Profile → Backup for a full backup, or Export Data for a portable file.",
+            "Can I restore my backup?" to "Yes. Use Profile → Restore, select the JSON backup, validate it, and confirm before replacing your current finance records.",
+            "Securing the app with PIN or biometrics" to "Enable PIN Lock and Biometric Authentication from Profile → Security."
         ),
         "Premium & Billing" to listOf(
             "What does Premium include?" to "Advanced Analytics, AI Insights, Backup, PDF Export, Premium themes and icons, PIN/Biometric Lock, Recurring Transactions, Advanced Filters, and priority support.",
@@ -1560,9 +1826,9 @@ private fun HelpCenterScreen(onBack: () -> Unit) {
         )
     )
     Column(Modifier.fillMaxSize().background(c.background)) {
-        PageTitle("Help Center", onBack = onBack)
+        PageTitle("Frequently Asked Questions", onBack = onBack)
         LazyColumn(contentPadding = PaddingValues(horizontal = 20.dp, vertical = 2.dp)) {
-            item { Text("Browse help topics by category, or visit Contact Support for direct help.", color = c.secondaryText, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)); Spacer(Modifier.height(12.dp)) }
+            item { Text(tr("Help topics and frequently asked questions"), color = c.secondaryText, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)); Spacer(Modifier.height(12.dp)) }
             groups.forEach { (title, entries) ->
                 item { Text(title.uppercase(), color = c.mutedText, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) }
                 item {
@@ -1612,13 +1878,13 @@ private fun AboutScreen(onBack: () -> Unit) {
                 Icon(Icons.Filled.TrendingUp, null, tint = Color.White, modifier = Modifier.size(36.dp))
             }
             Spacer(Modifier.height(14.dp))
-            Text("MoneyMate", color = c.primaryText, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
-            Text("Track Smarter. Spend Better. Grow Wealth.", color = c.secondaryText, fontSize = 12.5.sp)
+            Text(tr("MoneyMate"), color = c.primaryText, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+            Text(tr("Track Smarter. Spend Better. Grow Wealth."), color = c.secondaryText, fontSize = 12.5.sp)
             Spacer(Modifier.height(20.dp))
             MMCard(Modifier.fillMaxWidth()) {
                 AboutInfoRow("App Name", "MoneyMate")
                 HorizontalDivider(color = c.divider)
-                AboutInfoRow("Version", "2.5.0")
+                AboutInfoRow("Version", "MoneyMate v${BuildConfig.VERSION_NAME}")
                 HorizontalDivider(color = c.divider)
                 AboutInfoRow("Category", "Finance")
                 HorizontalDivider(color = c.divider)
@@ -1627,7 +1893,7 @@ private fun AboutScreen(onBack: () -> Unit) {
                 AboutInfoRow("Supported Languages", "English, বাংলা")
             }
             Spacer(Modifier.height(18.dp))
-            Text("© 2026 MoneyMate. All Rights Reserved.", color = c.mutedText, fontSize = 11.sp)
+            Text(tr("© 2026 MoneyMate. All Rights Reserved."), color = c.mutedText, fontSize = 11.sp)
         }
     }
 }
@@ -1667,7 +1933,7 @@ private fun SettingSwitch(title:String,subtitle:String,checked:Boolean,onChange:
 // Purpose: Encapsulates the Menu Inline section of this file.
 // -----------------------------------------------------------------------------
 @Composable
-private fun MenuInline(title:String,subtitle:String,onClick:()->Unit){val c=LocalMoneyMateTokens.current;Row(Modifier.fillMaxWidth().clickable(onClick=onClick).padding(vertical=12.dp)){Column(Modifier.weight(1f)){Text(title,color=c.primaryText,fontWeight=FontWeight.Bold);Text(subtitle,color=c.secondaryText,fontSize=11.sp)};Text("›",color=c.mutedText,fontSize=22.sp)}}
+private fun MenuInline(title:String,subtitle:String,onClick:()->Unit){val c=LocalMoneyMateTokens.current;Row(Modifier.fillMaxWidth().clickable(onClick=onClick).padding(vertical=12.dp)){Column(Modifier.weight(1f)){Text(title,color=c.primaryText,fontWeight=FontWeight.Bold);Text(subtitle,color=c.secondaryText,fontSize=11.sp)};Text(tr("›"),color=c.mutedText,fontSize=22.sp)}}
 
 
 // -----------------------------------------------------------------------------
@@ -1677,7 +1943,59 @@ private fun MenuInline(title:String,subtitle:String,onClick:()->Unit){val c=Loca
 @Composable
 private fun <T> PickerFieldPublic(label:String,items:List<T>,selected:T?,itemLabel:(T)->String,onSelect:(T)->Unit){var expanded by remember{mutableStateOf(false)};Box(Modifier.fillMaxWidth()){OutlinedButton(onClick={expanded=true},modifier=Modifier.fillMaxWidth()){Text(if(selected==null)label else itemLabel(selected))};DropdownMenu(expanded=expanded,onDismissRequest={expanded=false}){items.forEach{item->DropdownMenuItem(text={Text(itemLabel(item))},onClick={onSelect(item);expanded=false})}}}}
 
-private fun buildCsv(state:MoneyMateState):String{val out=StringBuilder("date,type,amount,merchant,paymentMethod,notes,accountName,categoryName\n");state.transactions.forEach{t->val a=state.accounts.firstOrNull{it.id==t.accountId}?.name.orEmpty();val c=state.categories.firstOrNull{it.id==t.categoryId}?.name.orEmpty();out.append(listOf(t.occurredAt,t.type,t.amount,t.merchant.orEmpty(),t.paymentMethod.orEmpty(),t.notes.orEmpty(),a,c).joinToString(","){csvEscape(it)}).append('\n')};return out.toString()}
+private fun exportTransactions(state: MoneyMateState, range: String): List<Transaction> {
+    val today = LocalDate.now()
+    return state.transactions.filter { tx ->
+        val date = runCatching { LocalDate.parse(tx.occurredAt.take(10)) }.getOrNull() ?: return@filter range == "All Time"
+        when (range) {
+            "This Month" -> date.year == today.year && date.monthValue == today.monthValue
+            "Last Month" -> {
+                val last = YearMonth.from(today).minusMonths(1)
+                date.year == last.year && date.monthValue == last.monthValue
+            }
+            "This Year" -> date.year == today.year
+            else -> true
+        }
+    }.sortedBy { it.occurredAt }
+}
+
+private fun buildCsv(state: MoneyMateState, range: String): String {
+    val txs = exportTransactions(state, range)
+    val income = txs.filter { it.type.equals("income", true) }
+    val expenses = txs.filter { it.type.equals("expense", true) }
+    val out = StringBuilder()
+    fun row(vararg cells: String) { out.append(cells.joinToString(",") { csvEscape(it) }).append('\n') }
+    fun transactionSection(title: String, items: List<Transaction>) {
+        row(title)
+        row("Date", "Category", "Description", "Account", "Payment Method", "Amount", "Type", "Notes")
+        items.forEach { t ->
+            val account = state.accounts.firstOrNull { it.id == t.accountId }?.name.orEmpty()
+            val category = state.categories.firstOrNull { it.id == t.categoryId }?.name ?: "Uncategorized"
+            row(t.occurredAt.take(10), category, t.merchant.orEmpty(), account, t.paymentMethod.orEmpty(), t.amount, t.type, t.notes.orEmpty())
+        }
+        row("CATEGORY SUMMARY")
+        items.groupBy { state.categories.firstOrNull { c -> c.id == it.categoryId }?.name ?: "Uncategorized" }
+            .toSortedMap()
+            .forEach { (category, rows) -> row(category, rows.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }.toString()) }
+        row("SECTION TOTAL", items.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }.toString())
+        out.append('\n')
+    }
+
+    row("MoneyMate Financial Statement")
+    row("Range", range)
+    row("Generated", LocalDate.now().toString())
+    row("Currency", state.currency)
+    out.append('\n')
+    transactionSection("INCOME", income)
+    transactionSection("EXPENSES", expenses)
+    val totalIncome = income.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
+    val totalExpense = expenses.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
+    row("FINAL SUMMARY")
+    row("Total Income", totalIncome.toString())
+    row("Total Expenses", totalExpense.toString())
+    row("Net", (totalIncome - totalExpense).toString())
+    return out.toString()
+}
 
 // -----------------------------------------------------------------------------
 // Section: csvEscape
@@ -1714,8 +2032,9 @@ private suspend fun importCsv(
     for (line in lines.drop(1)) {
         val cols = parseCsvLine(line)
 
-        if (cols.size < 8) {
-            fail++
+        // Professional MoneyMate exports contain section headings and summaries.
+        // Only import actual transaction rows.
+        if (cols.size < 8 || cols[6].lowercase() !in setOf("income", "expense")) {
             continue
         }
 
@@ -1774,20 +2093,119 @@ private suspend fun importCsv(
 // Section: buildPdf
 // Purpose: Encapsulates the build Pdf section of this file.
 // -----------------------------------------------------------------------------
-private fun buildPdf(state:MoneyMateState):ByteArray{val doc=PdfDocument();val paint=Paint().apply{color=android.graphics.Color.rgb(16,24,40);textSize=12f};val pageInfo=PdfDocument.PageInfo.Builder(595,842,1).create();var page=doc.startPage(pageInfo);val canvas=page.canvas;paint.textSize=20f;paint.isFakeBoldText=true;canvas.drawText("MoneyMate Financial Statement",36f,50f,paint);paint.textSize=11f;paint.isFakeBoldText=false;var y=82f;canvas.drawText("Generated ${LocalDate.now()} · Currency ${state.currency}",36f,y,paint);y+=26f;state.transactions.take(45).forEach{t->val line="${t.occurredAt.take(10)}  ${t.type.uppercase()}  ${t.merchant?:"Transaction"}  ${money(t.amount,state.currency)}";canvas.drawText(line.take(86),36f,y,paint);y+=16f};doc.finishPage(page);val stream=java.io.ByteArrayOutputStream();doc.writeTo(stream);doc.close();return stream.toByteArray()}
+private fun buildPdf(state: MoneyMateState, range: String): ByteArray {
+    val doc = PdfDocument()
+    val pageWidth = 595
+    val pageHeight = 842
+    val margin = 34f
+    val brand = android.graphics.Color.rgb(20, 108, 76)
+    val action = android.graphics.Color.rgb(15, 139, 129)
+    val success = android.graphics.Color.rgb(22, 163, 74)
+    val error = android.graphics.Color.rgb(220, 38, 38)
+    val blue = android.graphics.Color.rgb(37, 99, 235)
+    val ink = android.graphics.Color.rgb(17, 24, 39)
+    val muted = android.graphics.Color.rgb(100, 116, 139)
+    val line = android.graphics.Color.rgb(226, 232, 240)
+    val white = android.graphics.Color.WHITE
+    val paint = Paint().apply { isAntiAlias = true; typeface = android.graphics.Typeface.create("sans", android.graphics.Typeface.NORMAL) }
+    var pageNumber = 0
+
+    fun moneyText(value: Double) = "$state.currency ${"%.2f".format(value)}"
+    fun startPage(title: String, subtitle: String, accent: Int): PdfDocument.Page {
+        pageNumber++
+        val page = doc.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
+        val canvas = page.canvas
+        paint.color = brand; canvas.drawRect(0f, 0f, pageWidth.toFloat(), 92f, paint)
+        paint.color = white; paint.textSize = 23f; paint.isFakeBoldText = true; canvas.drawText(tr("MoneyMate"), margin, 39f, paint)
+        paint.textSize = 10f; paint.isFakeBoldText = false; canvas.drawText(tr("PERSONAL FINANCE • FINANCIAL STATEMENT"), margin, 59f, paint)
+        paint.color = accent; canvas.drawRect(0f, 92f, pageWidth.toFloat(), 98f, paint)
+        paint.color = ink; paint.textSize = 19f; paint.isFakeBoldText = true; canvas.drawText(title, margin, 132f, paint)
+        paint.color = muted; paint.textSize = 10f; paint.isFakeBoldText = false; canvas.drawText(subtitle, margin, 151f, paint)
+        return page
+    }
+    fun footer(page: PdfDocument.Page) {
+        val canvas = page.canvas
+        paint.color = line; canvas.drawRect(margin, 806f, pageWidth - margin, 807f, paint)
+        paint.color = muted; paint.textSize = 8.5f; paint.isFakeBoldText = false
+        canvas.drawText("Generated by MoneyMate • ${LocalDate.now()}", margin, 824f, paint)
+        canvas.drawText("Page $pageNumber", pageWidth - 76f, 824f, paint)
+    }
+    fun drawTablePage(title: String, items: List<Transaction>, accent: Int) {
+        var page = startPage(title, "$range • ${items.size} transaction(s) • ${state.currency}", accent)
+        var canvas = page.canvas
+        var y = 184f
+        fun header() {
+            paint.color = android.graphics.Color.rgb(241, 245, 249); canvas.drawRoundRect(margin, y - 16f, pageWidth - margin, y + 8f, 5f, 5f, paint)
+            paint.color = ink; paint.textSize = 8.5f; paint.isFakeBoldText = true
+            canvas.drawText(tr("DATE"), margin + 8f, y, paint); canvas.drawText(tr("CATEGORY / DESCRIPTION"), 112f, y, paint); canvas.drawText(tr("ACCOUNT"), 365f, y, paint); canvas.drawText(tr("AMOUNT"), 470f, y, paint)
+            y += 28f
+        }
+        header()
+        items.forEach { t ->
+            if (y > 760f) {
+                footer(page); doc.finishPage(page)
+                page = startPage("$title (continued)", "$range • ${state.currency}", accent); canvas = page.canvas; y = 184f; header()
+            }
+            val category = state.categories.firstOrNull { it.id == t.categoryId }?.name ?: "Uncategorized"
+            val account = state.accounts.firstOrNull { it.id == t.accountId }?.name ?: "—"
+            paint.color = ink; paint.textSize = 9f; paint.isFakeBoldText = false
+            canvas.drawText(t.occurredAt.take(10), margin + 8f, y, paint)
+            paint.isFakeBoldText = true; canvas.drawText(category.take(25), 112f, y, paint)
+            paint.isFakeBoldText = false; paint.color = muted; canvas.drawText((t.merchant ?: "Transaction").take(34), 112f, y + 12f, paint)
+            paint.color = ink; canvas.drawText(account.take(17), 365f, y, paint)
+            paint.color = accent; paint.isFakeBoldText = true; canvas.drawText(moneyText(t.amount.toDoubleOrNull() ?: 0.0), 470f, y, paint)
+            paint.color = line; canvas.drawRect(margin, y + 19f, pageWidth - margin, y + 20f, paint)
+            y += 38f
+        }
+        if (items.isEmpty()) {
+            paint.color = muted; paint.textSize = 12f; paint.isFakeBoldText = false; canvas.drawText(tr("No transactions in this period."), margin + 8f, y + 10f, paint); y += 42f
+        }
+        val grouped = items.groupBy { state.categories.firstOrNull { c -> c.id == it.categoryId }?.name ?: "Uncategorized" }.toSortedMap()
+        if (y > 610f) { footer(page); doc.finishPage(page); page = startPage("$title Category Summary", range, accent); canvas = page.canvas; y = 184f }
+        paint.color = ink; paint.textSize = 13f; paint.isFakeBoldText = true; canvas.drawText(tr("Category Summary"), margin, y, paint); y += 22f
+        grouped.forEach { (category, rows) ->
+            paint.color = muted; paint.textSize = 9.5f; paint.isFakeBoldText = false; canvas.drawText(category.take(38), margin + 8f, y, paint)
+            paint.color = accent; paint.isFakeBoldText = true; canvas.drawText(moneyText(rows.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }), 450f, y, paint); y += 17f
+        }
+        y += 5f; paint.color = accent; canvas.drawRoundRect(margin, y, pageWidth - margin, y + 42f, 8f, 8f, paint)
+        paint.color = white; paint.textSize = 12f; paint.isFakeBoldText = true; canvas.drawText("TOTAL $title", margin + 12f, y + 26f, paint)
+        canvas.drawText(moneyText(items.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }), 430f, y + 26f, paint)
+        footer(page); doc.finishPage(page)
+    }
+
+    val txs = exportTransactions(state, range)
+    val income = txs.filter { it.type.equals("income", true) }
+    val expenses = txs.filter { it.type.equals("expense", true) }
+    drawTablePage("INCOME", income, success)
+    drawTablePage("EXPENSES", expenses, error)
+
+    val totalIncome = income.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
+    val totalExpense = expenses.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
+    val summary = startPage("FINAL SUMMARY", "$range • Complete MoneyMate statement", blue)
+    val canvas = summary.canvas
+    fun summaryCard(top: Float, label: String, value: String, color: Int) {
+        paint.color = android.graphics.Color.rgb(248, 250, 252); canvas.drawRoundRect(margin, top, pageWidth - margin, top + 74f, 12f, 12f, paint)
+        paint.color = muted; paint.textSize = 10f; paint.isFakeBoldText = false; canvas.drawText(label, margin + 16f, top + 26f, paint)
+        paint.color = color; paint.textSize = 21f; paint.isFakeBoldText = true; canvas.drawText(value, margin + 16f, top + 55f, paint)
+    }
+    summaryCard(188f, "TOTAL INCOME", moneyText(totalIncome), success)
+    summaryCard(276f, "TOTAL EXPENSES", moneyText(totalExpense), error)
+    summaryCard(364f, "NET", moneyText(totalIncome - totalExpense), if (totalIncome >= totalExpense) brand else error)
+    paint.color = ink; paint.textSize = 13f; paint.isFakeBoldText = true; canvas.drawText(tr("Statement details"), margin, 480f, paint)
+    paint.color = muted; paint.textSize = 10f; paint.isFakeBoldText = false
+    canvas.drawText("Income transactions: ${income.size}", margin, 505f, paint)
+    canvas.drawText("Expense transactions: ${expenses.size}", margin, 524f, paint)
+    canvas.drawText("Currency: ${state.currency}", margin, 543f, paint)
+    canvas.drawText("Period: $range", margin, 562f, paint)
+    paint.color = action; canvas.drawRoundRect(margin, 610f, pageWidth - margin, 670f, 12f, 12f, paint)
+    paint.color = white; paint.textSize = 12f; paint.isFakeBoldText = true; canvas.drawText(tr("Track smarter. Spend better. Grow with MoneyMate."), margin + 18f, 645f, paint)
+    footer(summary); doc.finishPage(summary)
+
+    val stream = java.io.ByteArrayOutputStream()
+    doc.writeTo(stream); doc.close(); return stream.toByteArray()
+}
 
 
-// -----------------------------------------------------------------------------
-// Section: helpText
-// Purpose: Encapsulates the help Text section of this file.
-// -----------------------------------------------------------------------------
-private val helpText="""MoneyMate helps you track income and expenses, manage accounts, build budgets, monitor savings goals, manage bills, review analytics and keep portable backups. Use the + action from the main navigation to add a transaction. Financial Tools in Profile contains the full feature set."""
-
-// -----------------------------------------------------------------------------
-// Section: faqText
-// Purpose: Encapsulates the faq Text section of this file.
-// -----------------------------------------------------------------------------
-private val faqText="""Do I need an account?\nYes. A MoneyMate account securely connects your financial data to the configured backend.\n\nWhat is included in Premium?\nPremium includes advanced analytics, AI insights, backup/restore, export, security controls, Premium Themes, recurring transactions and advanced filters.\n\nCan I restore my backup?\nYes. Use Profile → Restore and validate the JSON file before confirming.\n\nCan I change language and currency?\nYes, from Profile → General."""
 
 // -----------------------------------------------------------------------------
 // Section: privacyText
@@ -1801,11 +2219,6 @@ private val privacyText="""MoneyMate is designed to keep financial data associat
 // -----------------------------------------------------------------------------
 private val termsText="""MoneyMate provides personal-finance tracking tools. Information and computed insights are informational only and are not financial, tax, legal or investment advice. Users are responsible for reviewing transaction accuracy and maintaining secure account credentials."""
 
-// -----------------------------------------------------------------------------
-// Section: licensesText
-// Purpose: Encapsulates the licenses Text section of this file.
-// -----------------------------------------------------------------------------
-private val licensesText="""MoneyMate uses AndroidX / Jetpack Compose, Retrofit, OkHttp, Gson, Express, PostgreSQL tooling, Prisma, Zod, bcryptjs, jsonwebtoken, Nodemailer, node-cron and their transitive dependencies. Review the package lockfiles and dependency metadata for exact versions and upstream licenses before store release."""
 
 // -----------------------------------------------------------------------------
 // Section: aboutText

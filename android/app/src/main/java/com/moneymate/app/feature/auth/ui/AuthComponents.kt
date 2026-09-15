@@ -1,5 +1,7 @@
 package com.moneymate.app.feature.auth.ui
 
+import com.moneymate.app.core.localization.tr
+
 // =============================================================================
 // File: AuthComponents.kt
 // Purpose: Reusable, professional authentication UI components shared by sign-in and account creation.
@@ -129,7 +131,7 @@ internal fun AuthField(
 
     Column(Modifier.fillMaxWidth()) {
         Text(
-            text = label,
+            text = tr(label),
             color = c.primaryText,
             fontSize = 12.5.sp,
             fontWeight = FontWeight.Bold,
@@ -160,7 +162,7 @@ internal fun AuthField(
             trailingIcon = trailing,
             placeholder = {
                 Text(
-                    text = placeholder,
+                    text = tr(placeholder),
                     color = c.mutedText,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium
@@ -239,9 +241,9 @@ internal fun PasswordStrengthHint(password: String) {
 
     Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Password strength", color = c.mutedText, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+            Text(tr("Password strength"), color = c.mutedText, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.weight(1f))
-            Text(label, color = tone, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+            Text(tr(label), color = tone, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(7.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -292,7 +294,7 @@ internal fun AuthCheckboxRow(
             }
         }
         Spacer(Modifier.width(9.dp))
-        Text(label, color = c.secondaryText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        Text(tr(label), color = c.secondaryText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -317,6 +319,6 @@ internal fun AuthPrimaryButton(text: String, enabled: Boolean = true, onClick: (
         ),
         elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp, pressedElevation = 0.dp)
     ) {
-        Text(text, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+        Text(tr(text), fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
     }
 }

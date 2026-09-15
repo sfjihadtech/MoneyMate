@@ -1,5 +1,7 @@
 package com.moneymate.app.feature.main.ui
 
+import com.moneymate.app.core.localization.tr
+
 // =============================================================================
 // File: MainTabs.kt
 // Purpose: Primary Home, Activity, Insights, and Profile tab content plus transaction rows and filters.
@@ -11,6 +13,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,6 +26,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -33,6 +38,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.moneymate.app.BuildConfig
+import coil.compose.AsyncImage
 import com.moneymate.app.core.common.CategoryCatalog
 import com.moneymate.app.core.common.displayDate
 import com.moneymate.app.core.common.money
@@ -44,6 +51,8 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.TextStyle
 import java.util.Locale
+import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 
 // -----------------------------------------------------------------------------
@@ -55,7 +64,8 @@ fun HomeTab(
     state: MoneyMateState,
     onOpenTool: (ToolPage) -> Unit,
     onAdd: () -> Unit,
-    onViewActivity: () -> Unit
+    onViewActivity: () -> Unit,
+    onProfile: () -> Unit
 ) {
     val c = LocalMoneyMateTokens.current
     var balanceVisible by remember { mutableStateOf(true) }
@@ -73,10 +83,19 @@ fun HomeTab(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
-                    Modifier.size(38.dp).background(c.brand, RoundedCornerShape(12.dp)),
+                    Modifier.size(38.dp).background(c.brand, RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)).clickable(onClick = onProfile),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("MM", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 11.sp)
+                    if (!state.user?.profileImageUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = state.user!!.profileImageUrl!!.let { if (it.startsWith("http")) it else BuildConfig.API_BASE_URL.trimEnd('/') + it },
+                            contentDescription = "Open profile and settings",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                        )
+                    } else {
+                        Text(tr("MM"), color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 11.sp)
+                    }
                 }
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
@@ -84,8 +103,6 @@ fun HomeTab(
                     Text(state.user?.name ?: "MoneyMate User", color = c.primaryText, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
                 }
                 HtmlIconButton(Icons.Filled.Notifications, "Notifications", { onOpenTool(ToolPage.NOTIFICATIONS) })
-                Spacer(Modifier.width(8.dp))
-                HtmlIconButton(Icons.Filled.Person, "Profile", { onOpenTool(ToolPage.QUICK_PROFILE) })
             }
         }
 
@@ -106,7 +123,7 @@ fun HomeTab(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Filled.AccountBalanceWallet, null, tint = Color.White.copy(alpha = .72f), modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(5.dp))
-                                Text("Available Balance", color = Color.White.copy(alpha = .72f), fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                                Text(tr("Available Balance"), color = Color.White.copy(alpha = .72f), fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
                                 Spacer(Modifier.weight(1f))
                                 IconButton(onClick = { balanceVisible = !balanceVisible }, modifier = Modifier.size(34.dp)) {
                                     Icon(if (balanceVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff, null, tint = Color.White.copy(alpha = .82f), modifier = Modifier.size(19.dp))
@@ -122,23 +139,12 @@ fun HomeTab(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Filled.Schedule, null, tint = Color.White.copy(alpha = .5f), modifier = Modifier.size(13.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text("Updated just now", color = Color.White.copy(alpha = .5f), fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
-                            }
-                            Row(Modifier.padding(top = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Surface(shape = RoundedCornerShape(9.dp), color = c.success.copy(alpha = .22f)) {
-                                    Row(Modifier.padding(horizontal = 9.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Filled.TrendingUp, null, tint = c.lightSuccess, modifier = Modifier.size(14.dp))
-                                        Spacer(Modifier.width(3.dp))
-                                        Text("+12.4%", color = c.lightSuccess, fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold)
-                                    }
-                                }
-                                Spacer(Modifier.width(8.dp))
-                                Text("vs. last month", color = Color.White.copy(alpha = .62f), fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                                Text(tr("Updated just now"), color = Color.White.copy(alpha = .5f), fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
                             }
                             Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                HeroStat("Total Income", money(summary.totalIncome, state.currency), Icons.Filled.ArrowDownward, Modifier.weight(1f))
-                                HeroStat("Total Expenses", money(summary.totalExpense, state.currency), Icons.Filled.ArrowUpward, Modifier.weight(1f))
-                                HeroStat("Savings", money(summary.totalSavings, state.currency), Icons.Filled.Savings, Modifier.weight(1f))
+                                HeroStat("Total Income", money(summary.totalIncome, state.currency), Icons.Filled.ArrowDownward, c.lightSuccess, Modifier.weight(1f))
+                                HeroStat("Total Expenses", money(summary.totalExpense, state.currency), Icons.Filled.ArrowUpward, c.error, Modifier.weight(1f))
+                                HeroStat("Savings", money(summary.totalSavings, state.currency), Icons.Filled.Savings, Color(0xFF64B5F6), Modifier.weight(1f))
                             }
                         }
                     }
@@ -174,7 +180,7 @@ fun HomeTab(
                         Column {
                             Text(healthLabel(financialHealthScore(state)), color = c.primaryText, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
                             Spacer(Modifier.height(4.dp))
-                            Text("Based on savings rate, budget adherence and bill status.", color = c.secondaryText, fontSize = 12.sp, lineHeight = 18.sp)
+                            Text(tr("Based on savings rate, budget adherence and bill status."), color = c.secondaryText, fontSize = 12.sp, lineHeight = 18.sp)
                         }
                     }
                 }
@@ -249,13 +255,13 @@ fun HomeTab(
 // Purpose: Encapsulates the Hero Stat section of this file.
 // -----------------------------------------------------------------------------
 @Composable
-private fun HeroStat(label: String, value: String, icon: ImageVector, modifier: Modifier = Modifier) {
+private fun HeroStat(label: String, value: String, icon: ImageVector, accent: Color, modifier: Modifier = Modifier) {
     Surface(modifier = modifier, shape = RoundedCornerShape(15.dp), color = Color.White.copy(alpha = .12f)) {
         Column(Modifier.padding(horizontal = 10.dp, vertical = 11.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, null, tint = Color.White.copy(alpha = .72f), modifier = Modifier.size(13.dp))
+                Icon(icon, null, tint = accent, modifier = Modifier.size(13.dp))
                 Spacer(Modifier.width(3.dp))
-                Text(label, color = Color.White.copy(alpha = .72f), fontSize = 9.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text(label, color = accent, fontSize = 9.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             }
             Spacer(Modifier.height(4.dp))
             Text(value, color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -325,7 +331,7 @@ private fun DonutBreakdown(state: MoneyMateState) {
     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
         Box(Modifier.size(150.dp),contentAlignment=Alignment.Center){
             Canvas(Modifier.fillMaxSize().padding(8.dp)){var start=-90f;data.forEachIndexed{i,d->val sweep=(d.amount/total*360).toFloat();drawArc(colors[i%colors.size],start,sweep,false,style=Stroke(width=18.dp.toPx()));start+=sweep}}
-            Column(horizontalAlignment=Alignment.CenterHorizontally){Text(money(total,state.currency),color=c.primaryText,fontWeight=FontWeight.ExtraBold,fontSize=17.sp);Text("Total spent",color=c.mutedText,fontSize=9.5.sp)}
+            Column(horizontalAlignment=Alignment.CenterHorizontally){Text(money(total,state.currency),color=c.primaryText,fontWeight=FontWeight.ExtraBold,fontSize=17.sp);Text(tr("Total spent"),color=c.mutedText,fontSize=9.5.sp)}
         }
         Spacer(Modifier.width(10.dp));Column(Modifier.weight(1f)){data.forEachIndexed{i,d->Row(Modifier.padding(vertical=4.dp),verticalAlignment=Alignment.CenterVertically){Box(Modifier.size(8.dp).background(colors[i%colors.size],CircleShape));Spacer(Modifier.width(6.dp));Text(d.name,color=c.secondaryText,fontSize=11.5.sp,modifier=Modifier.weight(1f));Text("${d.percentage.toInt()}%",color=c.secondaryText,fontSize=11.5.sp,fontWeight=FontWeight.ExtraBold)}}}
     }
@@ -430,11 +436,111 @@ fun TransactionsTab(
         if (filtered.isEmpty()) item { EmptyState("No transactions found", "Try adjusting your search or filters.") }
         else {
             items(filtered, key = { it.id }) { tx ->
-                HtmlCard(Modifier.padding(horizontal = 20.dp, vertical = 5.dp), padding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
-                    TransactionRow(state, tx, onClick = { onEdit(tx) })
+                SwipeTransactionItem(
+                    state = state,
+                    tx = tx,
+                    onEdit = { onEdit(tx) }
+                )
+            }
+        }
+    }
+}
+
+
+// -----------------------------------------------------------------------------
+// Section: SwipeTransactionItem
+// Purpose: Swipe right to reveal Edit; swipe left to reveal Delete.
+// Transfer history is protected because a transfer is a paired operation.
+// -----------------------------------------------------------------------------
+@Composable
+private fun SwipeTransactionItem(
+    state: MoneyMateState,
+    tx: Transaction,
+    onEdit: () -> Unit
+) {
+    val c = LocalMoneyMateTokens.current
+    val scope = rememberCoroutineScope()
+    var offsetX by remember(tx.id) { mutableFloatStateOf(0f) }
+    var confirmDelete by remember(tx.id) { mutableStateOf(false) }
+    val protectedTransfer = tx.type.equals("transfer", true)
+
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 5.dp)
+            .clip(RoundedCornerShape(18.dp))
+    ) {
+        Row(Modifier.matchParentSize()) {
+            Surface(
+                modifier = Modifier.width(92.dp).fillMaxHeight().clickable(enabled = !protectedTransfer) {
+                    offsetX = 0f
+                    onEdit()
+                },
+                color = c.action
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Edit, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text(tr("Edit"), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            Surface(
+                modifier = Modifier.width(92.dp).fillMaxHeight().clickable(enabled = !protectedTransfer) {
+                    offsetX = 0f
+                    confirmDelete = true
+                },
+                color = c.error
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Delete, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text(tr("Delete"), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
                 }
             }
         }
+
+        HtmlCard(
+            Modifier
+                .offset { IntOffset(offsetX.roundToInt(), 0) }
+                .pointerInput(tx.id) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            offsetX = when {
+                                offsetX > 42f -> 92f
+                                offsetX < -42f -> -92f
+                                else -> 0f
+                            }
+                        },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            if (!protectedTransfer) offsetX = (offsetX + dragAmount).coerceIn(-92f, 92f)
+                        }
+                    )
+                },
+            padding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+        ) {
+            TransactionRow(state, tx, onClick = if (protectedTransfer) null else onEdit)
+        }
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text(tr("Delete transaction?")) },
+            text = { Text(tr("This will permanently delete this transaction and update the account balance.")) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    scope.launch { state.deleteTransaction(tx.id) }
+                }) { Text(tr("Delete"), color = c.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(tr("Cancel")) } }
+        )
     }
 }
 
@@ -508,7 +614,7 @@ fun AnalyticsTab(state: MoneyMateState, onOpenTool: (ToolPage) -> Unit) {
                 HtmlCard {
                     Text(mt(state,"Category breakdown","ক্যাটাগরি বিশ্লেষণ"), color = c.primaryText, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
                     Spacer(Modifier.height(14.dp))
-                    if (categories.isEmpty()) Text("No expense data yet.", color = c.secondaryText, fontSize = 13.sp) else DonutBreakdown(state)
+                    if (categories.isEmpty()) Text(tr("No expense data yet."), color = c.secondaryText, fontSize = 13.sp) else DonutBreakdown(state)
                 }
                 Spacer(Modifier.height(22.dp))
                 HtmlCard {
@@ -543,8 +649,8 @@ fun AnalyticsTab(state: MoneyMateState, onOpenTool: (ToolPage) -> Unit) {
                         }
                         Spacer(Modifier.width(12.dp))
                         Column {
-                            Text("Advanced Analytics", color = c.primaryText, fontWeight = FontWeight.Bold)
-                            Text("Explore savings rate, budget adherence and spending concentration.", color = c.secondaryText, fontSize = 11.5.sp)
+                            Text(tr("Advanced Analytics"), color = c.primaryText, fontWeight = FontWeight.Bold)
+                            Text(tr("Explore savings rate, budget adherence and spending concentration."), color = c.secondaryText, fontSize = 11.5.sp)
                         }
                     }
                 }
@@ -568,14 +674,16 @@ fun ProfileTab(
     val c = LocalMoneyMateTokens.current
     val fullName = state.user?.name ?: "MoneyMate User"
     val email = state.user?.email.orEmpty()
+    val profileImage = state.user?.profileImageUrl?.let { if (it.startsWith("http")) it else BuildConfig.API_BASE_URL.trimEnd('/') + it }
 
     LazyColumn(Modifier.fillMaxSize().background(c.background), contentPadding = PaddingValues(bottom = 24.dp)) {
         item { HtmlTopBar(mt(state,"My Profile","আমার প্রোফাইল")) }
         item {
             Column(Modifier.padding(horizontal = 20.dp)) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(64.dp).background(Brush.linearGradient(listOf(c.action, c.brand)), RoundedCornerShape(20.dp)), contentAlignment = Alignment.Center) {
-                        Text(initials(fullName), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+                    Box(Modifier.size(64.dp).clip(CircleShape).background(Brush.linearGradient(listOf(c.action, c.brand))), contentAlignment = Alignment.Center) {
+                        if (!profileImage.isNullOrBlank()) AsyncImage(model = profileImage, contentDescription = "Profile photo", modifier = Modifier.fillMaxSize().clip(CircleShape))
+                        else Text(initials(fullName), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
                     }
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
@@ -670,21 +778,24 @@ fun ProfileTab(
                     HtmlSettingsRow("Export Data (CSV)", null, Icons.Filled.FileDownload, onClick = { onOpenTool(ToolPage.EXPORT) }); HtmlDivider()
                     HtmlSettingsRow("Export Data (PDF)", null, Icons.Filled.PictureAsPdf, onClick = { onOpenTool(ToolPage.EXPORT) }); HtmlDivider()
                     HtmlSettingsRow("Import Data", null, Icons.Filled.UploadFile, onClick = { onOpenTool(ToolPage.IMPORT) }); HtmlDivider()
-                    HtmlSettingsRow("Cloud Sync", "Connected to your MoneyMate account", Icons.Filled.Sync, trailing = { Switch(true, null, enabled = false) })
+                    HtmlSettingsRow(
+                        "Cloud Sync",
+                        if (state.guestMode) "Unavailable in Guest Mode" else "Automatic • synced with your MoneyMate account",
+                        Icons.Filled.Sync,
+                        trailing = { Icon(if (state.guestMode) Icons.Filled.CloudOff else Icons.Filled.CloudDone, null, tint = if (state.guestMode) c.mutedText else c.success) }
+                    )
                 }
 
                 Spacer(Modifier.height(22.dp)); HtmlEyebrow("Help & Support", Modifier.padding(vertical = 8.dp))
                 HtmlCard(padding = PaddingValues(horizontal = 6.dp)) {
-                    HtmlSettingsRow("Help Center", null, Icons.Filled.HelpOutline, onClick = { onOpenTool(ToolPage.HELP) }); HtmlDivider()
-                    HtmlSettingsRow("FAQ", null, Icons.Filled.QuestionAnswer, onClick = { onOpenTool(ToolPage.FAQ) }); HtmlDivider()
+                    HtmlSettingsRow("FAQ", "Help topics & frequently asked questions", Icons.Filled.QuestionAnswer, onClick = { onOpenTool(ToolPage.FAQ) }); HtmlDivider()
                     HtmlSettingsRow("Contact Support", null, Icons.Filled.ContactSupport, onClick = { onOpenTool(ToolPage.CONTACT) })
                 }
 
                 Spacer(Modifier.height(22.dp)); HtmlEyebrow("Legal", Modifier.padding(vertical = 8.dp))
                 HtmlCard(padding = PaddingValues(horizontal = 6.dp)) {
                     HtmlSettingsRow("Privacy", null, Icons.Filled.PrivacyTip, onClick = { onOpenTool(ToolPage.PRIVACY) }); HtmlDivider()
-                    HtmlSettingsRow("Terms of Service", null, Icons.Filled.Gavel, onClick = { onOpenTool(ToolPage.TERMS) }); HtmlDivider()
-                    HtmlSettingsRow("Open Source Licenses", null, Icons.Filled.Code, onClick = { onOpenTool(ToolPage.LICENSES) })
+                    HtmlSettingsRow("Terms of Service", null, Icons.Filled.Gavel, onClick = { onOpenTool(ToolPage.TERMS) })
                 }
 
                 Spacer(Modifier.height(22.dp)); HtmlEyebrow("About", Modifier.padding(vertical = 8.dp))
@@ -696,7 +807,7 @@ fun ProfileTab(
                 HtmlCard(padding = PaddingValues(horizontal = 6.dp)) {
                     HtmlSettingsRow("Sign Out", null, Icons.Filled.Logout, destructive = true, onClick = onSignOut)
                 }
-                Text("MoneyMate v2.5.0", color = c.mutedText, fontSize = 11.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Text(tr("MoneyMate v${BuildConfig.VERSION_NAME}"), color = c.mutedText, fontSize = 11.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
         }
     }
@@ -722,7 +833,7 @@ private fun PremiumStatusCard(onViewPlans: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.WorkspacePremium, null, tint = c.warning, modifier = Modifier.size(19.dp))
                 Spacer(Modifier.width(7.dp))
-                Text("MoneyMate Premium", color = c.warning, fontSize = 16.5.sp, fontWeight = FontWeight.ExtraBold)
+                Text(tr("MoneyMate Premium"), color = c.warning, fontSize = 16.5.sp, fontWeight = FontWeight.ExtraBold)
             }
             Spacer(Modifier.height(8.dp))
             Text(
@@ -738,7 +849,7 @@ private fun PremiumStatusCard(onViewPlans: () -> Unit) {
                 colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = c.brand),
                 shape = RoundedCornerShape(14.dp)
             ) {
-                Text("View Plans", fontWeight = FontWeight.ExtraBold)
+                Text(tr("View Plans"), fontWeight = FontWeight.ExtraBold)
             }
         }
     }
