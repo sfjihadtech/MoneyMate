@@ -62,7 +62,7 @@ const createTransactionSchema = z.object({
     receiptUrl: z
         .string()
         .trim()
-        .url("Receipt URL must be a valid URL")
+        .max(1000, "Receipt URL is too long")
         .optional()
         .nullable(),
 
