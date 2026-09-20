@@ -1,46 +1,34 @@
 // =============================================================================
 // File: transaction.routes.js
-// Purpose: Express route definitions for transaction.routes API endpoints.
-// Notes: Major executable sections are documented for easier maintenance.
+// Purpose: Transaction API routes and permanent receipt uploads.
 // =============================================================================
 
 const express = require("express");
-const path = require("path");
-const fs = require("fs");
 const multer = require("multer");
+const { v2: cloudinary } = require("cloudinary");
 
+const {
+    createTransaction,
+    getTransactions,
+    getTransactionById,
+    updateTransaction,
+    deleteTransaction,
+} = require("../controllers/transaction.controller");
 
-// Receipt upload directory
-const receiptUploadDir = path.join(
-    __dirname,
-    "../../uploads/receipts"
-);
+const {
+    authenticateToken,
+} = require("../middleware/auth.middleware");
 
-fs.mkdirSync(receiptUploadDir, {
-    recursive: true,
+const router = express.Router();
+
+// Cloudinary reads CLOUDINARY_URL from the environment
+cloudinary.config({
+    secure: true,
 });
 
-// Receipt image storage
-const receiptStorage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, receiptUploadDir);
-    },
-
-    filename: (req, file, cb) => {
-        const extension = path.extname(file.originalname).toLowerCase();
-
-        const uniqueName =
-            `receipt-${req.userId}-${Date.now()}-${Math.round(
-                Math.random() * 1e9
-            )}${extension}`;
-
-        cb(null, uniqueName);
-    },
-});
-
-// Accept receipt images only
+// Keep receipt in memory before uploading to Cloudinary
 const receiptUpload = multer({
-    storage: receiptStorage,
+    storage: multer.memoryStorage(),
 
     limits: {
         fileSize: 5 * 1024 * 1024,
@@ -65,64 +53,113 @@ const receiptUpload = multer({
     },
 });
 
+// Upload receipt buffer to Cloudinary
+function uploadReceiptToCloudinary(file, userId) {
+    return new Promise((resolve, reject) => {
+        const uploadStream =
+            cloudinary.uploader.upload_stream(
+                {
+                    folder: "moneymate/receipts",
+                    resource_type: "image",
+                    public_id:
+                        `receipt-${userId}-${Date.now()}`,
+                    overwrite: false,
+                },
+                (error, result) => {
+                    if (error) {
+                        reject(error);
+                        return;
+                    }
 
+                    resolve(result);
+                }
+            );
 
-
-const {
-    createTransaction,
-    getTransactions,
-    getTransactionById,
-    updateTransaction,
-    deleteTransaction,
-} = require("../controllers/transaction.controller");
-
-const {
-    authenticateToken,
-} = require("../middleware/auth.middleware");
-
-const router = express.Router();
+        uploadStream.end(file.buffer);
+    });
+}
 
 // GET /api/transactions
-router.get("/", authenticateToken, getTransactions);
+router.get(
+    "/",
+    authenticateToken,
+    getTransactions
+);
 
 // POST /api/transactions
-router.post("/", authenticateToken, createTransaction);
+router.post(
+    "/",
+    authenticateToken,
+    createTransaction
+);
 
 // POST /api/transactions/receipt
 router.post(
     "/receipt",
     authenticateToken,
     receiptUpload.single("receipt"),
-    (req, res) => {
-        if (!req.file) {
-            return res.status(400).json({
+    async (req, res) => {
+        try {
+            if (!req.file) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Receipt image is required",
+                });
+            }
+
+            const result =
+                await uploadReceiptToCloudinary(
+                    req.file,
+                    req.userId
+                );
+
+            if (!result?.secure_url) {
+                return res.status(500).json({
+                    success: false,
+                    message: "Receipt upload failed",
+                });
+            }
+
+            return res.status(201).json({
+                success: true,
+                message: "Receipt uploaded successfully",
+                data: {
+                    receiptUrl: result.secure_url,
+                },
+            });
+        } catch (error) {
+            console.error(
+                "Receipt upload failed:",
+                error
+            );
+
+            return res.status(500).json({
                 success: false,
-                message: "Receipt image is required",
+                message: "Receipt upload failed",
             });
         }
-
-        const receiptUrl =
-            `/uploads/receipts/${req.file.filename}`;
-
-        return res.status(201).json({
-            success: true,
-            message: "Receipt uploaded successfully",
-            data: {
-                receiptUrl,
-            },
-        });
     }
 );
 
-
-
 // GET /api/transactions/:id
-router.get("/:id", authenticateToken, getTransactionById);
+router.get(
+    "/:id",
+    authenticateToken,
+    getTransactionById
+);
 
 // PUT /api/transactions/:id
-router.put("/:id", authenticateToken, updateTransaction);
+router.put(
+    "/:id",
+    authenticateToken,
+    updateTransaction
+);
 
 // DELETE /api/transactions/:id
-router.delete("/:id", authenticateToken, deleteTransaction);
+router.delete(
+    "/:id",
+    authenticateToken,
+    deleteTransaction
+);
 
 module.exports = router;
