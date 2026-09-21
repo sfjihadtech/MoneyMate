@@ -39,12 +39,13 @@ const receiptUpload = multer({
             "image/jpeg",
             "image/png",
             "image/webp",
+            "application/pdf",
         ];
 
         if (!allowedTypes.includes(file.mimetype)) {
             return cb(
                 new Error(
-                    "Only JPG, PNG, and WEBP receipt images are allowed"
+                    "Only JPG, PNG, WEBP, and PDF receipts are allowed"
                 )
             );
         }
@@ -60,7 +61,9 @@ function uploadReceiptToCloudinary(file, userId) {
             cloudinary.uploader.upload_stream(
                 {
                     folder: "moneymate/receipts",
-                    resource_type: "image",
+                    resource_type: file.mimetype === "application/pdf"
+                        ? "raw"
+                        : "image",
                     public_id:
                         `receipt-${userId}-${Date.now()}`,
                     overwrite: false,
@@ -103,7 +106,7 @@ router.post(
             if (!req.file) {
                 return res.status(400).json({
                     success: false,
-                    message: "Receipt image is required",
+                    message: "Receipt file is required",
                 });
             }
 
