@@ -356,8 +356,7 @@ async function getBillById(req, res) {
 async function updateBill(req, res) {
     try {
         const userId = req.userId;
-        const billId =
-            Number(req.params.id);
+        const billId = Number(req.params.id);
 
         if (
             !Number.isInteger(billId) ||
@@ -369,10 +368,9 @@ async function updateBill(req, res) {
             });
         }
 
+        // Validate only the fields provided by the client.
         const validation =
-            updateBillSchema.safeParse(
-                req.body
-            );
+            updateBillSchema.safeParse(req.body);
 
         if (!validation.success) {
             return res.status(400).json({
@@ -397,24 +395,33 @@ async function updateBill(req, res) {
             });
         }
 
-        const {
-            name,
-            amount,
-            dueDate,
-            status,
-        } = validation.data;
+        const changes = validation.data;
+
+        // Only update fields actually supplied by the client.
+        const updateData = {};
+
+        if (changes.name !== undefined) {
+            updateData.name = changes.name;
+        }
+
+        if (changes.amount !== undefined) {
+            updateData.amount = changes.amount;
+        }
+
+        if (changes.dueDate !== undefined) {
+            updateData.dueDate = changes.dueDate;
+        }
+
+        if (changes.status !== undefined) {
+            updateData.status = changes.status;
+        }
 
         await db.orm.public.Bill
             .where({
                 id: billId,
                 userId,
             })
-            .update({
-                name,
-                amount,
-                dueDate,
-                status,
-            });
+            .update(updateData);
 
         const updatedBill =
             await db.orm.public.Bill.first({
@@ -422,15 +429,9 @@ async function updateBill(req, res) {
                 userId,
             });
 
-
-        // ====================================================
-        // Automatic Notification Handling
-        // ====================================================
+        // Keep due-bill notifications in sync.
         try {
-            if (
-                updatedBill.status !==
-                "upcoming"
-            ) {
+            if (updatedBill.status !== "upcoming") {
                 await removeBillDueNotifications(
                     userId,
                     billId
@@ -448,25 +449,18 @@ async function updateBill(req, res) {
             );
         }
 
-
         return res.status(200).json({
             success: true,
-            message:
-                "Bill updated successfully",
+            message: "Bill updated successfully",
             data: {
                 bill: {
                     id: updatedBill.id,
                     name: updatedBill.name,
-                    amount:
-                        updatedBill.amount,
-                    dueDate:
-                        updatedBill.dueDate,
-                    status:
-                        updatedBill.status,
-                    createdAt:
-                        updatedBill.createdAt,
-                    updatedAt:
-                        updatedBill.updatedAt,
+                    amount: updatedBill.amount,
+                    dueDate: updatedBill.dueDate,
+                    status: updatedBill.status,
+                    createdAt: updatedBill.createdAt,
+                    updatedAt: updatedBill.updatedAt,
                 },
             },
         });
@@ -478,8 +472,7 @@ async function updateBill(req, res) {
 
         return res.status(500).json({
             success: false,
-            message:
-                "Failed to update bill",
+            message: "Failed to update bill",
         });
     }
 }
