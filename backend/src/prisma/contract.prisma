@@ -68,6 +68,7 @@ model Transaction {
   occurredAt    TimestamptzString
   createdAt     TimestamptzString @default(now())
   updatedAt     temporal.updatedAtString()
+  transferGroupId String?
 
   user          User      @relation(fields: [userId], references: [id])
   account       Account   @relation(fields: [accountId], references: [id])

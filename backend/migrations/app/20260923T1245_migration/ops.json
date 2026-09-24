@@ -1,0 +1,44 @@
+[
+  {
+    "id": "column.public.transaction.transferGroupId",
+    "label": "Add column \"transferGroupId\" to \"transaction\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "column",
+        "name": "transferGroupId",
+        "table": "transaction"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"transferGroupId\" is missing",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "transaction",
+          "transferGroupId"
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add column \"transferGroupId\"",
+        "sql": "ALTER TABLE \"public\".\"transaction\" ADD COLUMN \"transferGroupId\" text"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"transferGroupId\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "transaction",
+          "transferGroupId"
+        ]
+      }
+    ]
+  }
+]

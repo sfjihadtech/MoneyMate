@@ -906,6 +906,13 @@
                   "kind": "scalar"
                 }
               },
+              "transferGroupId": {
+                "nullable": true,
+                "type": {
+                  "codecId": "pg/text@1",
+                  "kind": "scalar"
+                }
+              },
               "type": {
                 "nullable": false,
                 "type": {
@@ -1006,6 +1013,9 @@
                 },
                 "receiptUrl": {
                   "column": "receiptUrl"
+                },
+                "transferGroupId": {
+                  "column": "transferGroupId"
                 },
                 "type": {
                   "column": "type"
@@ -1960,6 +1970,11 @@
                   "nativeType": "text",
                   "nullable": true
                 },
+                "transferGroupId": {
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
+                  "nullable": true
+                },
                 "type": {
                   "codecId": "pg/text@1",
                   "nativeType": "text",
@@ -2154,7 +2169,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "6beb241432242911dadceb8cb600e50ab8bad2d0cba2668bd2a0f23f12f854f0"
+    "storageHash": "3a0d3c87dd61a31860c6455e695a2505269cacf7152ff8d2478c2877b8052306"
   },
   "execution": {
     "executionHash": "41036d571b6e331ef600242093be2987582a248368146ec092428301ce0e8401",

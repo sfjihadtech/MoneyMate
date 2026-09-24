@@ -107,6 +107,7 @@ function serializeTransaction(transaction) {
         accountId: transaction.accountId,
         categoryId: transaction.categoryId,
         type: transaction.type,
+        transferGroupId: transaction.transferGroupId,
         amount: transaction.amount,
         merchant: transaction.merchant,
         paymentMethod: transaction.paymentMethod,
@@ -354,11 +355,135 @@ async function getTransactions(req, res) {
                 .all();
 
 
+                const accounts =
+                    await db.orm.public.Account
+                        .where({ userId })
+                        .all();
+
+                const accountsById =
+                    new Map(
+                        accounts.map(
+                            (account) => [
+                                account.id,
+                                account,
+                            ]
+                        )
+                    );
+
+
+
+                    const transferGroups = new Map();
+
+                    for (const transaction of transactions) {
+
+                        if (
+                            transaction.type === "transfer" &&
+                            transaction.transferGroupId
+                        ) {
+
+                            const group =
+                                transferGroups.get(
+                                    transaction.transferGroupId
+                                ) || [];
+
+                            group.push(transaction);
+
+                            transferGroups.set(
+                                transaction.transferGroupId,
+                                group
+                            );
+                        }
+                    }
+
+
         transactions.sort(
             (a, b) =>
                 new Date(b.occurredAt) -
                 new Date(a.occurredAt)
         );
+
+
+
+
+        const serializedTransactions = [];
+        const handledTransferGroups = new Set();
+
+        for (const transaction of transactions) {
+
+            if (
+                transaction.type !== "transfer" ||
+                !transaction.transferGroupId
+            ) {
+                serializedTransactions.push(
+                    serializeTransaction(transaction)
+                );
+                continue;
+            }
+
+            if (
+                handledTransferGroups.has(
+                    transaction.transferGroupId
+                )
+            ) {
+                continue;
+            }
+
+            const pair =
+                transferGroups.get(
+                    transaction.transferGroupId
+                ) || [];
+
+            const outgoing =
+                pair.find((item) =>
+                    item.merchant?.startsWith("Transfer to ")
+                );
+
+            const incoming =
+                pair.find((item) =>
+                    item.merchant?.startsWith("Transfer from ")
+                );
+
+            if (!outgoing || !incoming) {
+                serializedTransactions.push(
+                    serializeTransaction(transaction)
+                );
+                continue;
+            }
+
+            const fromAccount =
+                accountsById.get(outgoing.accountId);
+
+            const toAccount =
+                accountsById.get(incoming.accountId);
+
+            serializedTransactions.push({
+                ...serializeTransaction(outgoing),
+
+                fromAccountId:
+                    fromAccount?.id ?? outgoing.accountId,
+
+                fromAccountName:
+                    fromAccount?.name ?? "Unknown Account",
+
+                fromAccountType:
+                    fromAccount?.type ?? null,
+
+                toAccountId:
+                    toAccount?.id ?? incoming.accountId,
+
+                toAccountName:
+                    toAccount?.name ?? "Unknown Account",
+
+                toAccountType:
+                    toAccount?.type ?? null,
+            });
+
+            handledTransferGroups.add(
+                transaction.transferGroupId
+            );
+        }
+
+
 
 
         return res.status(200).json({
@@ -367,9 +492,7 @@ async function getTransactions(req, res) {
                 "Transactions retrieved successfully",
             data: {
                 transactions:
-                    transactions.map(
-                        serializeTransaction
-                    ),
+                    serializedTransactions,
             },
         });
 

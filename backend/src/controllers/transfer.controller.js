@@ -9,6 +9,7 @@
 // =============================================================================
 
 const { db } = require("../prisma/db.ts");
+const { randomUUID } = require("crypto");
 
 const {
     transferSchema,
@@ -65,6 +66,8 @@ async function createTransfer(req, res) {
 
 
     try {
+
+    const transferGroupId = randomUUID();
 
         const result =
             await db.transaction(
@@ -215,6 +218,8 @@ async function createTransfer(req, res) {
 
                             type: "transfer",
 
+                            transferGroupId,
+
                             amount,
 
                             merchant:
@@ -252,6 +257,8 @@ async function createTransfer(req, res) {
                             categoryId: null,
 
                             type: "transfer",
+
+                            transferGroupId,
 
                             amount,
 
