@@ -85,6 +85,10 @@ const restoreRoutes = require(
     "./routes/restore.routes"
 );
 
+const trialRoutes = require(
+    "./routes/trial.routes"
+);
+
 
 // ============================================================
 // Service Imports
@@ -126,7 +130,10 @@ app.use(
             if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
                 return callback(null, true);
             }
-            return callback(new Error("Origin not allowed by CORS"));
+
+            return callback(
+                new Error("Origin not allowed by CORS")
+            );
         },
         credentials: true,
     })
@@ -143,7 +150,11 @@ app.use(
 );
 
 app.use(
-    morgan(process.env.NODE_ENV === "production" ? "combined" : "dev")
+    morgan(
+        process.env.NODE_ENV === "production"
+            ? "combined"
+            : "dev"
+    )
 );
 
 
@@ -175,7 +186,6 @@ app.use(
         )
     )
 );
-
 
 
 // ============================================================
@@ -337,6 +347,14 @@ app.use(
 );
 
 
+// ============================================================
+// Trial Routes
+// ============================================================
+app.use(
+    "/api/trial",
+    trialRoutes
+);
+
 
 // ============================================================
 // Password Reset HTTPS Bridge
@@ -381,7 +399,6 @@ app.get(
 );
 
 
-
 // ============================================================
 // Health Check
 // ============================================================
@@ -424,11 +441,17 @@ app.use((req, res) => {
 });
 
 app.use((error, req, res, next) => {
-    console.error("Unhandled server error:", error);
+    console.error(
+        "Unhandled server error:",
+        error
+    );
+
     res.status(500).json({
         success: false,
         message: "Internal server error",
-        ...(process.env.NODE_ENV !== "production" && { debug: error.message }),
+        ...(process.env.NODE_ENV !== "production" && {
+            debug: error.message,
+        }),
     });
 });
 

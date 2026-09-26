@@ -22,6 +22,22 @@ model User {
   bills               Bill[]
   passwordResetTokens PasswordResetToken[]
   notifications       Notification[]
+  trialDevices        TrialDevice[]
+}
+
+
+// ============================================================
+// Free Trial Device
+// One account and one device can claim the free trial only once.
+// ============================================================
+model TrialDevice {
+  id             Int      @id @default(autoincrement())
+  userId         Int      @unique
+  deviceHash     String   @unique
+  trialStartedAt TimestamptzString @default(now())
+  createdAt      TimestamptzString @default(now())
+
+  user           User     @relation(fields: [userId], references: [id])
 }
 
 

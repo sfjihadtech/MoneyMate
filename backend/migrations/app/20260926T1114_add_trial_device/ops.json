@@ -1,0 +1,167 @@
+[
+  {
+    "id": "table.trialDevice",
+    "label": "Create table \"trialDevice\"",
+    "summary": "Creates table \"trialDevice\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "trialDevice"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"trialDevice\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"trialDevice\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"trialDevice\"",
+        "sql": "CREATE TABLE \"public\".\"trialDevice\" (\n  \"createdAt\" timestamptz DEFAULT (now()) NOT NULL,\n  \"deviceHash\" text NOT NULL,\n  \"id\" SERIAL NOT NULL,\n  \"trialStartedAt\" timestamptz DEFAULT (now()) NOT NULL,\n  \"userId\" int4 NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"trialDevice\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"trialDevice\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.trialDevice.trialDevice_userId_key",
+    "label": "Add unique constraint on \"trialDevice\" (userId)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "trialDevice_userId_key",
+        "table": "trialDevice"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"trialDevice_userId_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "trialDevice_userId_key",
+          "public",
+          "\"public\".\"trialDevice\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"trialDevice_userId_key\"",
+        "sql": "ALTER TABLE \"public\".\"trialDevice\" ADD CONSTRAINT \"trialDevice_userId_key\" UNIQUE (\"userId\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"trialDevice_userId_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "trialDevice_userId_key",
+          "public",
+          "\"public\".\"trialDevice\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.trialDevice.trialDevice_deviceHash_key",
+    "label": "Add unique constraint on \"trialDevice\" (deviceHash)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "trialDevice_deviceHash_key",
+        "table": "trialDevice"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"trialDevice_deviceHash_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "trialDevice_deviceHash_key",
+          "public",
+          "\"public\".\"trialDevice\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"trialDevice_deviceHash_key\"",
+        "sql": "ALTER TABLE \"public\".\"trialDevice\" ADD CONSTRAINT \"trialDevice_deviceHash_key\" UNIQUE (\"deviceHash\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"trialDevice_deviceHash_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "trialDevice_deviceHash_key",
+          "public",
+          "\"public\".\"trialDevice\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.trialDevice.trialDevice_userId_fkey",
+    "label": "Add foreign key \"trialDevice_userId_fkey\" on \"trialDevice\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "trialDevice_userId_fkey",
+        "table": "trialDevice"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"trialDevice_userId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "trialDevice_userId_fkey",
+          "public",
+          "\"public\".\"trialDevice\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"trialDevice_userId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"trialDevice\"\nADD CONSTRAINT \"trialDevice_userId_fkey\"\nFOREIGN KEY (\"userId\")\nREFERENCES \"public\".\"user\" (\"id\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"trialDevice_userId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "trialDevice_userId_fkey",
+          "public",
+          "\"public\".\"trialDevice\""
+        ]
+      }
+    ]
+  }
+]
