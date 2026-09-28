@@ -6,6 +6,12 @@
 
 const { db } = require("../prisma/db.ts");
 
+
+const {
+    sendPushNotificationToUser,
+} = require("../services/pushNotification.service");
+
+
 const {
     createNotificationSchema,
     notificationListQuerySchema,
@@ -57,6 +63,16 @@ async function createNotification(req, res) {
                     relatedEntityType ?? null,
                 relatedEntityId:
                     relatedEntityId ?? null,
+            });
+
+            await sendPushNotificationToUser({
+                userId,
+                title,
+                message,
+                data: {
+                    notificationId: notification.id,
+                    type: notification.type,
+                },
             });
 
         return res.status(201).json({

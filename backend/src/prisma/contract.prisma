@@ -23,6 +23,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
   notifications       Notification[]
   trialDevices        TrialDevice[]
+  fcmDevices          FcmDevice[]
 }
 
 
@@ -38,6 +39,21 @@ model TrialDevice {
   createdAt      TimestamptzString @default(now())
 
   user           User     @relation(fields: [userId], references: [id])
+}
+
+
+// ============================================================
+// FCM Device
+// Stores Firebase Cloud Messaging tokens for each user's device.
+// ============================================================
+model FcmDevice {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  token     String   @unique
+  createdAt TimestamptzString @default(now())
+  updatedAt temporal.updatedAtString()
+
+  user      User     @relation(fields: [userId], references: [id])
 }
 
 

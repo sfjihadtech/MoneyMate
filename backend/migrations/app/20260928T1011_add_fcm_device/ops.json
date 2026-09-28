@@ -1,0 +1,164 @@
+[
+  {
+    "id": "table.fcmDevice",
+    "label": "Create table \"fcmDevice\"",
+    "summary": "Creates table \"fcmDevice\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "table",
+        "name": "fcmDevice"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure table \"fcmDevice\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"fcmDevice\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create table \"fcmDevice\"",
+        "sql": "CREATE TABLE \"public\".\"fcmDevice\" (\n  \"createdAt\" timestamptz DEFAULT (now()) NOT NULL,\n  \"id\" SERIAL NOT NULL,\n  \"token\" text NOT NULL,\n  \"updatedAt\" timestamptz NOT NULL,\n  \"userId\" int4 NOT NULL,\n  PRIMARY KEY (\"id\")\n)",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify table \"fcmDevice\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"fcmDevice\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "unique.fcmDevice.fcmDevice_token_key",
+    "label": "Add unique constraint on \"fcmDevice\" (token)",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "unique",
+        "name": "fcmDevice_token_key",
+        "table": "fcmDevice"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure constraint \"fcmDevice_token_key\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "fcmDevice_token_key",
+          "public",
+          "\"public\".\"fcmDevice\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add unique constraint \"fcmDevice_token_key\"",
+        "sql": "ALTER TABLE \"public\".\"fcmDevice\" ADD CONSTRAINT \"fcmDevice_token_key\" UNIQUE (\"token\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify constraint \"fcmDevice_token_key\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "fcmDevice_token_key",
+          "public",
+          "\"public\".\"fcmDevice\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "index.fcmDevice.fcmDevice_userId_idx_a489d58a",
+    "label": "Create index \"fcmDevice_userId_idx_a489d58a\" on \"fcmDevice\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "index",
+        "name": "fcmDevice_userId_idx_a489d58a",
+        "table": "fcmDevice"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure index \"fcmDevice_userId_idx_a489d58a\" does not exist",
+        "sql": "SELECT (to_regclass($1)) IS NULL AS \"result\"",
+        "params": [
+          "\"public\".\"fcmDevice_userId_idx_a489d58a\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "create index \"fcmDevice_userId_idx_a489d58a\"",
+        "sql": "CREATE INDEX \"fcmDevice_userId_idx_a489d58a\" ON \"public\".\"fcmDevice\" (\"userId\")",
+        "params": []
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify index \"fcmDevice_userId_idx_a489d58a\" exists",
+        "sql": "SELECT (to_regclass($1)) IS NOT NULL AS \"result\"",
+        "params": [
+          "\"public\".\"fcmDevice_userId_idx_a489d58a\""
+        ]
+      }
+    ]
+  },
+  {
+    "id": "foreignKey.fcmDevice.fcmDevice_userId_fkey",
+    "label": "Add foreign key \"fcmDevice_userId_fkey\" on \"fcmDevice\"",
+    "operationClass": "additive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "foreignKey",
+        "name": "fcmDevice_userId_fkey",
+        "table": "fcmDevice"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure FK \"fcmDevice_userId_fkey\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "fcmDevice_userId_fkey",
+          "public",
+          "\"public\".\"fcmDevice\""
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "add FK \"fcmDevice_userId_fkey\"",
+        "sql": "ALTER TABLE \"public\".\"fcmDevice\"\nADD CONSTRAINT \"fcmDevice_userId_fkey\"\nFOREIGN KEY (\"userId\")\nREFERENCES \"public\".\"user\" (\"id\")"
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify FK \"fcmDevice_userId_fkey\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\"",
+        "params": [
+          "fcmDevice_userId_fkey",
+          "public",
+          "\"public\".\"fcmDevice\""
+        ]
+      }
+    ]
+  }
+]

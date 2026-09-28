@@ -15,11 +15,32 @@ const {
 } = require("../controllers/notification.controller");
 
 const {
+    registerFcmToken,
+    unregisterFcmToken,
+} = require("../controllers/fcm.controller");
+
+const {
     authenticateToken,
 } = require("../middleware/auth.middleware");
 
 
 const router = express.Router();
+
+// ============================================================
+// FCM Device Token
+// ============================================================
+
+router.post(
+    "/fcm-token",
+    authenticateToken,
+    registerFcmToken
+);
+
+router.delete(
+    "/fcm-token",
+    authenticateToken,
+    unregisterFcmToken
+);
 
 
 // ============================================================
