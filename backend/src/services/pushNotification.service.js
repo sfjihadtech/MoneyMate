@@ -148,7 +148,7 @@ async function sendPushNotificationToUser({
     } catch (error) {
         console.error(
             "[FCM] Push notification error:",
-            error.message
+            error.stack
         );
 
         return {
