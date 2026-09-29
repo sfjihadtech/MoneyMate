@@ -1,13 +1,19 @@
+
 // =============================================================================
 // File: firebaseAdmin.js
 // Purpose: Initialize Firebase Admin SDK for server-side push notifications.
-// Notes:
-// - Service-account credentials come only from environment variables.
-// - No private key file is stored in the repository.
-// - Firebase Admin is initialized only once.
 // =============================================================================
 
-const admin = require("firebase-admin");
+const {
+    initializeApp,
+    getApps,
+    getApp,
+    cert,
+} = require("firebase-admin/app");
+
+const {
+    getMessaging,
+} = require("firebase-admin/messaging");
 
 
 // =============================================================================
@@ -15,8 +21,8 @@ const admin = require("firebase-admin");
 // =============================================================================
 
 function initializeFirebaseAdmin() {
-    if (admin.apps.length > 0) {
-        return admin;
+    if (getApps().length > 0) {
+        return getApp();
     }
 
     const rawServiceAccount =
@@ -26,24 +32,21 @@ function initializeFirebaseAdmin() {
         console.warn(
             "[Firebase Admin] FIREBASE_SERVICE_ACCOUNT_JSON is not configured"
         );
-
         return null;
     }
 
     try {
-        const serviceAccount =
-            JSON.parse(rawServiceAccount);
+        const serviceAccount = JSON.parse(rawServiceAccount);
 
-        admin.initializeApp({
-            credential:
-                admin.credential.cert(serviceAccount),
+        const app = initializeApp({
+            credential: cert(serviceAccount),
         });
 
         console.log(
             "[Firebase Admin] Initialized successfully"
         );
 
-        return admin;
+        return app;
     } catch (error) {
         console.error(
             "[Firebase Admin] Initialization failed:",
@@ -57,14 +60,19 @@ function initializeFirebaseAdmin() {
 
 // =============================================================================
 // Get Firebase Admin Instance
+// Preserve the existing .messaging().send() interface.
 // =============================================================================
 
 function getFirebaseAdmin() {
-    if (admin.apps.length > 0) {
-        return admin;
+    const app = initializeFirebaseAdmin();
+
+    if (!app) {
+        return null;
     }
 
-    return initializeFirebaseAdmin();
+    return {
+        messaging: () => getMessaging(app),
+    };
 }
 
 
