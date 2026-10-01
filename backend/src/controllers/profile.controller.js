@@ -9,6 +9,7 @@ const fs = require("fs");
 const path = require("path");
 
 const { db } = require("../prisma/db.ts");
+const { pool } = require("../prisma/pg");
 
 const {
     updateProfileSchema,
@@ -491,13 +492,36 @@ async function changePassword(req, res) {
                 12
             );
 
-        await db.orm.public.User
-            .where({
-                id: userId,
-            })
-            .update({
-                passwordHash: newPasswordHash,
-            });
+       // Update password and revoke all refresh tokens atomically.
+       const client = await pool.connect();
+
+       try {
+           await client.query("BEGIN");
+
+           // Update the user's password.
+           await client.query(
+               `UPDATE "user"
+                SET "passwordHash" = $1
+                WHERE "id" = $2`,
+               [newPasswordHash, userId]
+           );
+
+           // Revoke all active refresh tokens.
+           await client.query(
+               `UPDATE "refreshToken"
+                SET "revokedAt" = NOW()
+                WHERE "userId" = $1
+                  AND "revokedAt" IS NULL`,
+               [userId]
+           );
+
+           await client.query("COMMIT");
+       } catch (error) {
+           await client.query("ROLLBACK").catch(() => {});
+           throw error;
+       } finally {
+           client.release();
+       }
 
         return res.status(200).json({
             success: true,
@@ -545,6 +569,7 @@ async function deleteUserAccount(req, res) {
             // Remove dependent data first so foreign-key constraints remain valid.
             await orm.public.Notification.where({ userId }).deleteAll();
             await orm.public.PasswordResetToken.where({ userId }).deleteAll();
+            await orm.public.RefreshToken.where({ userId }).deleteAll();
             await orm.public.Budget.where({ userId }).deleteAll();
             await orm.public.Transaction.where({ userId }).deleteAll();
             await orm.public.Bill.where({ userId }).deleteAll();

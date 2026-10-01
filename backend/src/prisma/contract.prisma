@@ -24,6 +24,7 @@ model User {
   notifications       Notification[]
   trialDevices        TrialDevice[]
   fcmDevices          FcmDevice[]
+  refreshTokens       RefreshToken[]
 }
 
 
@@ -54,6 +55,23 @@ model FcmDevice {
   updatedAt temporal.updatedAtString()
 
   user      User     @relation(fields: [userId], references: [id])
+}
+
+
+// ============================================================
+// Refresh Token
+// Stores hashed refresh tokens for persistent login sessions.
+// Each device can maintain an independent session.
+// ============================================================
+model RefreshToken {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  tokenHash  String   @unique
+  expiresAt  TimestamptzString
+  revokedAt  TimestamptzString?
+  createdAt  TimestamptzString @default(now())
+
+  user       User     @relation(fields: [userId], references: [id])
 }
 
 

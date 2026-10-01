@@ -8,6 +8,7 @@ const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 
 const { db } = require("../prisma/db.ts");
+const { pool } = require("../prisma/pg");
 
 const {
     forgotPasswordSchema,
@@ -140,7 +141,7 @@ async function forgotPassword(req, res) {
             });
 
 
-        if (requestsInLast12Hours.length >= 3) {
+        if (requestsInLast12Hours.length >= 5) {
             return res.status(429).json({
                 success: false,
                 code: "RESET_LIMIT_REACHED",
@@ -562,43 +563,70 @@ async function resetPassword(req, res) {
             );
 
 
-        // ====================================================
-        // Update Password
-        // ====================================================
-        await db.orm.public.User
-            .where({
-                id: user.id,
-            })
-            .update({
-                passwordHash:
-                    newPasswordHash,
-            });
-
 
         // ====================================================
-        // Invalidate All Reset Tokens
+        // Update Password and Invalidate All Sessions
         // ====================================================
-        const userTokens =
-            await db.orm.public.PasswordResetToken
-                .where({
-                    userId: user.id,
-                })
-                .all();
+            // Update password and revoke sessions atomically.
+            const client = await pool.connect();
 
-        const usedAt =
-            new Date().toISOString();
+            try {
+                await client.query("BEGIN");
 
-        for (const userToken of userTokens) {
-            if (!userToken.usedAt) {
-                await db.orm.public.PasswordResetToken
-                    .where({
-                        id: userToken.id,
-                    })
-                    .update({
-                        usedAt,
+                // Consume the reset token only if it is still valid.
+                const consumed = await client.query(
+                    `UPDATE "passwordResetToken"
+                     SET "usedAt" = NOW()
+                     WHERE "id" = $1
+                       AND "usedAt" IS NULL
+                       AND "expiresAt" > NOW()
+                     RETURNING "userId"`,
+                    [resetToken.id]
+                );
+
+                if (consumed.rowCount !== 1) {
+                    await client.query("ROLLBACK");
+                    return res.status(400).json({
+                        success: false,
+                        message: "Invalid or expired reset token",
                     });
+                }
+
+                const resetUserId = consumed.rows[0].userId;
+
+                // Change password.
+                await client.query(
+                    `UPDATE "user"
+                     SET "passwordHash" = $1
+                     WHERE "id" = $2`,
+                    [newPasswordHash, resetUserId]
+                );
+
+                // Invalidate every password reset token for this user.
+                await client.query(
+                    `UPDATE "passwordResetToken"
+                     SET "usedAt" = NOW()
+                     WHERE "userId" = $1
+                       AND "usedAt" IS NULL`,
+                    [resetUserId]
+                );
+
+                // Revoke every active refresh token for this user.
+                await client.query(
+                    `UPDATE "refreshToken"
+                     SET "revokedAt" = NOW()
+                     WHERE "userId" = $1
+                       AND "revokedAt" IS NULL`,
+                    [resetUserId]
+                );
+
+                await client.query("COMMIT");
+            } catch (error) {
+                await client.query("ROLLBACK").catch(() => {});
+                throw error;
+            } finally {
+                client.release();
             }
-        }
 
 
         return res.status(200).json({

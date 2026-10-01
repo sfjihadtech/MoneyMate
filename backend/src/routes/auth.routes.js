@@ -1,7 +1,7 @@
+
 // =============================================================================
 // File: auth.routes.js
-// Purpose: Express route definitions for auth.routes API endpoints.
-// Notes: Major executable sections are documented for easier maintenance.
+// Purpose: Express route definitions for authentication API endpoints.
 // =============================================================================
 
 const express = require("express");
@@ -9,6 +9,8 @@ const express = require("express");
 const {
     register,
     login,
+    refresh,
+    logout,
     getMe,
 } = require("../controllers/auth.controller");
 
@@ -24,8 +26,16 @@ router.post("/register", register);
 // POST /api/auth/login
 router.post("/login", login);
 
+// POST /api/auth/refresh
+// Uses a refresh token to issue a new access token and refresh token.
+router.post("/refresh", refresh);
+
+// POST /api/auth/logout
+// Revokes the supplied refresh token.
+router.post("/logout", logout);
+
 // GET /api/auth/me
-// Protected route — requires a valid JWT token
+// Protected route — requires a valid JWT access token.
 router.get("/me", authenticateToken, getMe);
 
 module.exports = router;
