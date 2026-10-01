@@ -1,119 +1,53 @@
+
+"use strict";
+
 // =============================================================================
 // File: email.service.js
 // Purpose: Handles MoneyMate transactional email delivery.
 // Notes:
-// - Uses one reusable pooled SMTP transporter.
-// - Reuses Gmail SMTP connections when possible.
-// - Keeps password-reset email design and content unchanged.
-// - SMTP credentials are read only from environment variables.
+// - Uses Resend HTTPS API instead of Gmail SMTP.
+// - Reuses one Resend client.
+// - Preserves the existing password-reset email design and content.
+// - Reads credentials only from environment variables.
 // =============================================================================
 
-const nodemailer = require("nodemailer");
-
+const { Resend } = require("resend");
 
 // =============================================================================
-// SMTP Transporter
+// Resend Client
 // =============================================================================
 
-// Keep one transporter instance for the lifetime of the backend process.
-// This avoids creating a new Gmail SMTP/TLS connection for every email.
-let transporterInstance = null;
+let resendInstance = null;
 
-
-// -----------------------------------------------------------------------------
-// Create / Reuse SMTP Transporter
-// -----------------------------------------------------------------------------
-function createTransporter() {
-
-    // Return the existing transporter when already initialized.
-    if (transporterInstance) {
-        return transporterInstance;
+function createEmailClient() {
+    if (resendInstance) {
+        return resendInstance;
     }
 
+    const apiKey = String(
+        process.env.RESEND_API_KEY || ""
+    ).trim();
 
-    const smtpPort =
-        Number(
-            process.env.SMTP_PORT || 587
-        );
-
-
-    const smtpUser =
-        String(
-            process.env.SMTP_USER || ""
-        ).trim();
-
-
-    // Google may display App Passwords with spaces.
-    // Nodemailer requires the raw password without spaces.
-    const smtpPass =
-        String(
-            process.env.SMTP_PASS || ""
-        ).replace(/\s+/g, "");
-
-
-    // -------------------------------------------------------------------------
-    // Validate SMTP Configuration
-    // -------------------------------------------------------------------------
-
-    if (
-        !process.env.SMTP_HOST ||
-        !smtpUser ||
-        !smtpPass
-    ) {
+    if (!apiKey) {
         throw new Error(
-            "SMTP is not configured: SMTP_HOST, SMTP_USER and SMTP_PASS are required"
+            "RESEND_API_KEY is not configured"
         );
     }
 
+    resendInstance = new Resend(apiKey);
 
-    // -------------------------------------------------------------------------
-    // Create Reusable SMTP Pool
-    // -------------------------------------------------------------------------
-
-    transporterInstance =
-        nodemailer.createTransport({
-
-            host: process.env.SMTP_HOST,
-
-            port: smtpPort,
-
-            secure:
-                smtpPort === 465,
-
-            auth: {
-                user: smtpUser,
-                pass: smtpPass,
-            },
-
-
-            // -------------------------------------------------------------
-            // Connection Pool
-            // -------------------------------------------------------------
-            // Reuse an authenticated SMTP connection instead of opening
-            // a completely new Gmail connection for every reset email.
-
-            pool: true,
-
-            maxConnections: 2,
-
-            maxMessages: 50,
-
-
-            // -------------------------------------------------------------
-            // Timeouts
-            // -------------------------------------------------------------
-
-            connectionTimeout: 10000,
-
-            greetingTimeout: 10000,
-
-            socketTimeout: 15000,
-        });
-
-
-    return transporterInstance;
+    return resendInstance;
 }
 
+// Escape dynamic values inserted into HTML.
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
 
 // =============================================================================
 // Send Password Reset Email
@@ -124,41 +58,46 @@ async function sendPasswordResetEmail({
     name,
     resetToken,
 }) {
-
-    const transporter =
-        createTransporter();
-
+    const resend = createEmailClient();
 
     // -------------------------------------------------------------------------
-    // Reset URL
+    // Reset URL — original behavior preserved
     // -------------------------------------------------------------------------
 
     const resetBaseUrl =
         process.env.PASSWORD_RESET_URL ||
         "http://localhost:3000/reset-password";
 
-
     const resetUrl =
         `${resetBaseUrl}?token=${encodeURIComponent(
             resetToken
         )}`;
 
-
     // -------------------------------------------------------------------------
     // Sender / Recipient Display Information
     // -------------------------------------------------------------------------
 
-    const fromEmail =
-        process.env.EMAIL_FROM ||
-        process.env.SMTP_USER;
+    const fromEmail = String(
+        process.env.RESEND_FROM_EMAIL || ""
+    ).trim();
 
+    if (!fromEmail) {
+        throw new Error(
+            "RESEND_FROM_EMAIL is not configured"
+        );
+    }
 
     const displayName =
         name || "MoneyMate User";
 
+    const safeName =
+        escapeHtml(displayName);
+
+    const safeResetUrl =
+        escapeHtml(resetUrl);
 
     // =========================================================================
-    // Plain Text Email
+    // Plain Text Email — original content preserved
     // =========================================================================
 
     const text = `
@@ -177,9 +116,8 @@ If you did not request a password reset, you can ignore this email.
 MoneyMate
 `.trim();
 
-
     // =========================================================================
-    // HTML Email
+    // HTML Email — original design preserved
     // =========================================================================
 
     const html = `
@@ -227,7 +165,7 @@ MoneyMate
             </h1>
 
             <p>
-                Hi ${displayName},
+                Hi ${safeName},
             </p>
 
             <p>
@@ -241,7 +179,7 @@ MoneyMate
                 "
             >
                 <a
-                    href="${resetUrl}"
+                    href="${safeResetUrl}"
                     style="
                         display: inline-block;
                         background-color: #0B3B29;
@@ -292,7 +230,7 @@ MoneyMate
                     word-break: break-all;
                 "
             >
-                ${resetUrl}
+                ${safeResetUrl}
             </p>
         </div>
     </div>
@@ -300,50 +238,58 @@ MoneyMate
 </html>
 `;
 
-
     // =========================================================================
-    // Send Email
+    // Send Email Through Resend HTTPS API
     // =========================================================================
 
-    const info =
-        await transporter.sendMail({
-            from:
-                `"MoneyMate" <${fromEmail}>`,
-
-            to,
-
+    const { data, error } =
+        await resend.emails.send({
+            from: `MoneyMate <${fromEmail}>`,
+            to: [to],
             subject:
                 "Reset your MoneyMate password",
-
             text,
-
             html,
         });
 
+    if (error) {
+        // Do not log the reset token or email contents.
+        throw new Error(
+            `Resend email delivery failed: ${
+                error.name || "API_ERROR"
+            }`
+        );
+    }
+
+    if (!data || !data.id) {
+        throw new Error(
+            "Resend did not return an email ID"
+        );
+    }
 
     return {
-        messageId: info.messageId,
+        messageId: data.id,
     };
 }
 
-
 // =============================================================================
-// Verify SMTP Connection
+// Verify Email Configuration
 // =============================================================================
 
+// Validates configuration without sending an email.
 async function verifyEmailConnection() {
+    createEmailClient();
 
-    // Use the same reusable transporter.
-    const transporter =
-        createTransporter();
-
-
-    await transporter.verify();
-
+    if (!String(
+        process.env.RESEND_FROM_EMAIL || ""
+    ).trim()) {
+        throw new Error(
+            "RESEND_FROM_EMAIL is not configured"
+        );
+    }
 
     return true;
 }
-
 
 // =============================================================================
 // Export Email Service
