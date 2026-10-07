@@ -86,10 +86,32 @@ const changePasswordSchema = z.object({
 });
 
 
+
+// ============================================================
+// Change Email Validation
+// ============================================================
+const changeEmailSchema = z.object({
+    currentPassword: z
+        .string({
+            message: "Current password is required",
+        })
+        .min(1, "Current password is required"),
+
+    newEmail: z
+        .string({
+            message: "New email is required",
+        })
+        .trim()
+        .email("Please enter a valid email address")
+        .max(255, "Email address is too long")
+        .toLowerCase(),
+});
+
 // ============================================================
 // Export Profile Validation Schemas
 // ============================================================
 module.exports = {
     updateProfileSchema,
     changePasswordSchema,
+    changeEmailSchema,
 };

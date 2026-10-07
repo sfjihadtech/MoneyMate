@@ -14,6 +14,7 @@ const { pool } = require("../prisma/pg");
 const {
     updateProfileSchema,
     changePasswordSchema,
+    changeEmailSchema,
 } = require("../validators/profile.validator");
 
 
@@ -541,6 +542,137 @@ async function changePassword(req, res) {
 }
 
 
+// ============================================================
+// Change Email
+// ============================================================
+
+// -----------------------------------------------------------------------------
+// Section: changeEmail
+// Purpose: Securely changes the authenticated user's email address.
+// -----------------------------------------------------------------------------
+async function changeEmail(req, res) {
+    try {
+        const userId = req.userId;
+
+        const validation =
+            changeEmailSchema.safeParse(
+                req.body
+            );
+
+        if (!validation.success) {
+            return res.status(400).json({
+                success: false,
+                message: "Validation failed",
+                errors: validation.error.issues.map(
+                    (issue) => issue.message
+                ),
+            });
+        }
+
+        const {
+            currentPassword,
+            newEmail,
+        } = validation.data;
+
+        const user = await db.orm.public.User.first({
+            id: userId,
+        });
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found",
+            });
+        }
+
+        // Verify the user's current password before changing email.
+        const isPasswordValid =
+            await bcrypt.compare(
+                currentPassword,
+                user.passwordHash
+            );
+
+        if (!isPasswordValid) {
+            return res.status(401).json({
+                success: false,
+                message: "Current password is incorrect",
+            });
+        }
+
+        // Do not allow changing to the same email address.
+        if (
+            user.email.toLowerCase() ===
+            newEmail.toLowerCase()
+        ) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "New email must be different from current email",
+            });
+        }
+
+        // Make sure another account does not already use this email.
+        const existingUser =
+            await db.orm.public.User.first({
+                email: newEmail,
+            });
+
+        if (
+            existingUser &&
+            existingUser.id !== userId
+        ) {
+            return res.status(409).json({
+                success: false,
+                message:
+                    "An account with this email already exists",
+            });
+        }
+
+        await db.orm.public.User
+            .where({
+                id: userId,
+            })
+            .update({
+                email: newEmail,
+            });
+
+        const updatedUser =
+            await db.orm.public.User.first({
+                id: userId,
+            });
+
+        return res.status(200).json({
+            success: true,
+            message: "Email changed successfully",
+            data: {
+                user: {
+                    id: updatedUser.id,
+                    name: updatedUser.name,
+                    username: updatedUser.username,
+                    email: updatedUser.email,
+                    profileImageUrl:
+                        updatedUser.profileImageUrl,
+                    currency: updatedUser.currency,
+                    language: updatedUser.language,
+                    createdAt: updatedUser.createdAt,
+                    updatedAt: updatedUser.updatedAt,
+                },
+            },
+        });
+    } catch (error) {
+        console.error(
+            "Change email error:",
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to change email",
+        });
+    }
+}
+
+
 
 
 // ============================================================
@@ -604,5 +736,6 @@ module.exports = {
     uploadProfileImage,
     deleteProfileImage,
     changePassword,
+    changeEmail,
     deleteUserAccount,
 };

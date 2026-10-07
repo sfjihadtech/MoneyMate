@@ -12,6 +12,7 @@ const {
     uploadProfileImage,
     deleteProfileImage,
     changePassword,
+    changeEmail,
     deleteUserAccount,
 } = require("../controllers/profile.controller");
 
@@ -77,6 +78,15 @@ router.put(
     changePassword
 );
 
+
+// ============================================================
+// Change Email
+// ============================================================
+router.put(
+    "/email",
+    authenticateToken,
+    changeEmail
+);
 
 
 
