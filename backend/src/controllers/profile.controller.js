@@ -15,6 +15,7 @@ const {
     updateProfileSchema,
     changePasswordSchema,
     changeEmailSchema,
+    deleteAccountSchema,
 } = require("../validators/profile.validator");
 
 
@@ -686,6 +687,21 @@ async function changeEmail(req, res) {
 async function deleteUserAccount(req, res) {
     try {
         const userId = req.userId;
+
+        const validation = deleteAccountSchema.safeParse(req.body);
+
+        if (!validation.success) {
+            return res.status(400).json({
+                success: false,
+                message: "Validation failed",
+                errors: validation.error.issues.map(
+                    (issue) => issue.message
+                ),
+            });
+        }
+
+        const { currentPassword } = validation.data;
+
         const user = await db.orm.public.User.first({ id: userId });
 
         if (!user) {
@@ -694,6 +710,19 @@ async function deleteUserAccount(req, res) {
                 message: "User not found",
             });
         }
+
+        const isPasswordValid = await bcrypt.compare(
+            currentPassword,
+            user.passwordHash
+        );
+
+        if (!isPasswordValid) {
+            return res.status(401).json({
+                success: false,
+                message: "Current password is incorrect",
+            });
+        }
+
 
         await db.transaction(async (tx) => {
             const orm = tx.orm;

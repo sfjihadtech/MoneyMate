@@ -107,6 +107,20 @@ const changeEmailSchema = z.object({
         .toLowerCase(),
 });
 
+
+// ============================================================
+// Delete Account Validation
+// ============================================================
+const deleteAccountSchema = z.object({
+    currentPassword: z
+        .string({
+            message: "Current password is required",
+        })
+        .min(1, "Current password is required"),
+});
+
+
+
 // ============================================================
 // Export Profile Validation Schemas
 // ============================================================
@@ -114,4 +128,5 @@ module.exports = {
     updateProfileSchema,
     changePasswordSchema,
     changeEmailSchema,
+    deleteAccountSchema,
 };
