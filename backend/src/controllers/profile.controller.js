@@ -719,7 +719,7 @@ async function deleteUserAccount(req, res) {
         if (!isPasswordValid) {
             return res.status(401).json({
                 success: false,
-                message: "Current password is incorrect",
+                message: "Password is incorrect",
             });
         }
 
@@ -731,6 +731,8 @@ async function deleteUserAccount(req, res) {
             await orm.public.Notification.where({ userId }).deleteAll();
             await orm.public.PasswordResetToken.where({ userId }).deleteAll();
             await orm.public.RefreshToken.where({ userId }).deleteAll();
+            await orm.public.TrialDevice.where({ userId }).deleteAll();
+            await orm.public.FcmDevice.where({ userId }).deleteAll();
             await orm.public.Budget.where({ userId }).deleteAll();
             await orm.public.Transaction.where({ userId }).deleteAll();
             await orm.public.Bill.where({ userId }).deleteAll();
