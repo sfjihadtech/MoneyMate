@@ -8,6 +8,13 @@ const bcrypt = require("bcryptjs");
 const fs = require("fs");
 const path = require("path");
 
+const { v2: cloudinary } = require("cloudinary");
+
+// Use CLOUDINARY_URL from Render environment variables.
+cloudinary.config({
+    secure: true,
+});
+
 const { db } = require("../prisma/db.ts");
 const { pool } = require("../prisma/pg");
 
@@ -82,6 +89,89 @@ function deleteUploadedFile(file) {
             "Delete uploaded file error:",
             error.message
         );
+    }
+}
+
+
+// ============================================================
+// Upload Profile Image to Cloudinary
+// ============================================================
+
+function uploadProfileImageToCloudinary(file, userId) {
+    return new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+            {
+                folder: "moneymate/profile-images",
+                resource_type: "image",
+                public_id: `profile-${userId}-${Date.now()}`,
+                overwrite: false,
+            },
+            (error, result) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+
+                if (!result?.secure_url) {
+                    reject(new Error("Cloudinary image URL missing"));
+                    return;
+                }
+
+                resolve(result);
+            }
+        );
+
+        uploadStream.end(file.buffer);
+    });
+}
+
+
+ // ============================================================
+ // Extract Cloudinary Profile Image Public ID
+ // ============================================================
+
+function getCloudinaryProfileImagePublicId(imageUrl) {
+    if (!imageUrl || typeof imageUrl !== "string") {
+        return null;
+    }
+
+    try {
+        const parsedUrl = new URL(imageUrl);
+
+        // Only accept HTTPS images from our Cloudinary account.
+        const cloudName = cloudinary.config().cloud_name;
+
+        if (
+            parsedUrl.protocol !== "https:" ||
+            parsedUrl.hostname !== "res.cloudinary.com" ||
+            !cloudName
+        ) {
+            return null;
+        }
+
+        const prefix = `/${cloudName}/image/upload/`;
+
+        if (!parsedUrl.pathname.startsWith(prefix)) {
+            return null;
+        }
+
+        const imagePath = decodeURIComponent(
+            parsedUrl.pathname.slice(prefix.length)
+        );
+
+        // Remove Cloudinary transformation/version prefixes.
+        const match = imagePath.match(
+            /(?:^|\/)(moneymate\/profile-images\/[^/]+)$/
+        );
+
+        if (!match) {
+            return null;
+        }
+
+        // Remove the file extension from the public ID.
+        return match[1].replace(/\.[^.]+$/, "");
+    } catch (error) {
+        return null;
     }
 }
 
@@ -253,7 +343,10 @@ async function updateProfile(req, res) {
 // Section: uploadProfileImage
 // Purpose: Handles the upload Profile Image part of this backend module.
 // -----------------------------------------------------------------------------
+
 async function uploadProfileImage(req, res) {
+    let uploadedImage = null;
+
     try {
         const userId = req.userId;
 
@@ -269,72 +362,97 @@ async function uploadProfileImage(req, res) {
         });
 
         if (!user) {
-            deleteUploadedFile(req.file);
-
             return res.status(404).json({
                 success: false,
                 message: "User not found",
             });
         }
 
-        // Save relative URL in database
-        const profileImageUrl =
-            `/uploads/profile-images/${req.file.filename}`;
+        // Upload image to Cloudinary.
+        uploadedImage = await uploadProfileImageToCloudinary(
+            req.file,
+            userId
+        );
 
-        try {
-            await db.orm.public.User
-                .where({
-                    id: userId,
-                })
-                .update({
-                    profileImageUrl,
-                });
-        } catch (error) {
-            // Remove new file if database update fails
-            deleteUploadedFile(req.file);
+        const profileImageUrl = uploadedImage.secure_url;
 
-            throw error;
-        }
+        // Save permanent HTTPS URL in PostgreSQL.
+        await db.orm.public.User
+            .where({ id: userId })
+            .update({ profileImageUrl });
 
-        // Delete previous profile image after successful update
+        const updatedUser = await db.orm.public.User.first({
+            id: userId,
+        });
+
+        // Database update succeeded.
+        // Do not delete the new image during later cleanup.
+        uploadedImage = null;
+
+        // Remove the previous image when replacing it.
         if (
             user.profileImageUrl &&
             user.profileImageUrl !== profileImageUrl
         ) {
-            deleteLocalProfileImage(
-                user.profileImageUrl
-            );
-        }
+            if (user.profileImageUrl.startsWith(
+                "/uploads/profile-images/"
+            )) {
+                deleteLocalProfileImage(user.profileImageUrl);
+            } else {
+                try {
+                    const oldPublicId =
+                        getCloudinaryProfileImagePublicId(
+                            user.profileImageUrl
+                        );
 
-        const updatedUser =
-            await db.orm.public.User.first({
-                id: userId,
-            });
+                    if (oldPublicId) {
+                        await cloudinary.uploader.destroy(
+                            oldPublicId,
+                            { resource_type: "image" }
+                        );
+                    }
+                } catch (cleanupError) {
+                    console.error(
+                        "Previous profile image cleanup failed:",
+                        cleanupError
+                    );
+                }
+            }
+        }
 
         return res.status(200).json({
             success: true,
             message: "Profile image uploaded successfully",
             data: {
-                profileImageUrl:
-                    updatedUser.profileImageUrl,
-
+                profileImageUrl: updatedUser.profileImageUrl,
                 user: {
                     id: updatedUser.id,
                     name: updatedUser.name,
                     username: updatedUser.username,
                     email: updatedUser.email,
-                    profileImageUrl:
-                        updatedUser.profileImageUrl,
+                    profileImageUrl: updatedUser.profileImageUrl,
                     currency: updatedUser.currency,
                     language: updatedUser.language,
                 },
             },
         });
     } catch (error) {
-        console.error(
-            "Upload profile image error:",
-            error
-        );
+        // Roll back a newly uploaded image if DB saving fails.
+        if (uploadedImage?.public_id) {
+            try {
+                await cloudinary.uploader.destroy(
+                    uploadedImage.public_id,
+                    { resource_type: "image" }
+                );
+            } catch (cleanupError) {
+                console.error(
+                    "New profile image rollback failed:",
+                    cleanupError
+                );
+            }
+        }
+
+        console.error("Upload profile image error:", error);
 
         return res.status(500).json({
             success: false,
@@ -342,6 +460,7 @@ async function uploadProfileImage(req, res) {
         });
     }
 }
+
 
 
 // ============================================================
@@ -352,6 +471,7 @@ async function uploadProfileImage(req, res) {
 // Section: deleteProfileImage
 // Purpose: Handles the delete Profile Image part of this backend module.
 // -----------------------------------------------------------------------------
+
 async function deleteProfileImage(req, res) {
     try {
         const userId = req.userId;
@@ -367,7 +487,6 @@ async function deleteProfileImage(req, res) {
             });
         }
 
-        // Already has no profile image
         if (!user.profileImageUrl) {
             return res.status(200).json({
                 success: true,
@@ -378,22 +497,42 @@ async function deleteProfileImage(req, res) {
             });
         }
 
-        const oldProfileImageUrl =
-            user.profileImageUrl;
+        const oldProfileImageUrl = user.profileImageUrl;
 
-        // Remove URL from database first
+        // Clear the image URL from PostgreSQL first.
         await db.orm.public.User
-            .where({
-                id: userId,
-            })
+            .where({ id: userId })
             .update({
                 profileImageUrl: null,
             });
 
-        // Then remove physical file
-        deleteLocalProfileImage(
-            oldProfileImageUrl
-        );
+        // Delete the previous image from its storage.
+        try {
+            if (oldProfileImageUrl.startsWith(
+                "/uploads/profile-images/"
+            )) {
+                deleteLocalProfileImage(oldProfileImageUrl);
+            } else {
+                const publicId =
+                    getCloudinaryProfileImagePublicId(
+                        oldProfileImageUrl
+                    );
+
+                if (publicId) {
+                    await cloudinary.uploader.destroy(
+                        publicId,
+                        { resource_type: "image" }
+                    );
+                }
+            }
+        } catch (cleanupError) {
+            // Profile deletion succeeded in DB.
+            // Log cloud cleanup failure without failing the request.
+            console.error(
+                "Profile image cleanup failed:",
+                cleanupError
+            );
+        }
 
         return res.status(200).json({
             success: true,
@@ -414,6 +553,7 @@ async function deleteProfileImage(req, res) {
         });
     }
 }
+
 
 
 // ============================================================
@@ -742,7 +882,32 @@ async function deleteUserAccount(req, res) {
             await orm.public.User.where({ id: userId }).delete();
         });
 
-        deleteLocalProfileImage(user.profileImageUrl);
+
+        // Clean up the user's profile image after account deletion.
+        // Cloud cleanup failures must not undo a successful DB deletion.
+        try {
+            const imageUrl = user.profileImageUrl;
+
+            if (imageUrl?.startsWith("/uploads/profile-images/")) {
+                deleteLocalProfileImage(imageUrl);
+            } else {
+                const publicId =
+                    getCloudinaryProfileImagePublicId(imageUrl);
+
+                if (publicId) {
+                    await cloudinary.uploader.destroy(
+                        publicId,
+                        { resource_type: "image" }
+                    );
+                }
+            }
+        } catch (cleanupError) {
+            console.error(
+                "Deleted account profile image cleanup failed:",
+                cleanupError
+            );
+        }
+
 
         return res.status(200).json({
             success: true,

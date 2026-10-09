@@ -1,65 +1,24 @@
+
 // =============================================================================
 // File: upload.middleware.js
-// Purpose: Express middleware for upload.middleware behavior.
-// Notes: Major executable sections are documented for easier maintenance.
+// Purpose: Validate profile image uploads and keep them in memory temporarily.
+// Notes: Cloudinary upload is handled by profile.controller.js.
 // =============================================================================
 
 const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
-
 
 // ============================================================
-// Profile Image Upload Directory
+// Multer Memory Storage
 // ============================================================
-const uploadDirectory = path.join(
-    process.cwd(),
-    "uploads",
-    "profile-images"
-);
+// Files are kept in memory until the controller uploads them.
+// No profile image is written to Render's local disk.
 
-
-// Create directory automatically if it does not exist
-if (!fs.existsSync(uploadDirectory)) {
-    fs.mkdirSync(uploadDirectory, {
-        recursive: true,
-    });
-}
-
-
-// ============================================================
-// Multer Storage Configuration
-// ============================================================
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, uploadDirectory);
-    },
-
-    filename: function (req, file, cb) {
-        const extension = path.extname(
-            file.originalname
-        ).toLowerCase();
-
-        const userId = req.userId || "user";
-
-        const uniqueName =
-            `profile-${userId}-${Date.now()}-${Math.round(
-                Math.random() * 1e9
-            )}${extension}`;
-
-        cb(null, uniqueName);
-    },
-});
-
+const storage = multer.memoryStorage();
 
 // ============================================================
 // Allowed Profile Image Types
 // ============================================================
 
-// -----------------------------------------------------------------------------
-// Section: profileImageFileFilter
-// Purpose: Handles the profile Image File Filter part of this backend module.
-// -----------------------------------------------------------------------------
 function profileImageFileFilter(req, file, cb) {
     const allowedMimeTypes = [
         "image/jpeg",
@@ -78,10 +37,10 @@ function profileImageFileFilter(req, file, cb) {
     cb(null, true);
 }
 
-
 // ============================================================
 // Multer Upload Configuration
 // ============================================================
+
 const profileImageUpload = multer({
     storage,
 
@@ -94,20 +53,18 @@ const profileImageUpload = multer({
     fileFilter: profileImageFileFilter,
 });
 
-
 // ============================================================
 // Single Profile Image Upload Middleware
-//
-// Android multipart field name:
-// profileImage
+// Android multipart field name: profileImage
 // ============================================================
+
 const uploadProfileImage =
     profileImageUpload.single("profileImage");
-
 
 // ============================================================
 // Export Upload Middleware
 // ============================================================
+
 module.exports = {
     uploadProfileImage,
 };
